@@ -1,224 +1,408 @@
 
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Search, ShoppingCart, Heart, ArrowLeft, Package } from 'lucide-react'
+import {
+  Search,
+  ShoppingCart,
+  Heart,
+  Package,
+  LayoutDashboard
+} from 'lucide-react'
 import toast from 'react-hot-toast'
 import { supabase } from '../lib/supabase'
 
 export default function Shop() {
   const navigate = useNavigate()
+
   const [products, setProducts] = useState([])
-  const [search, setSearch] = useState('')
+  const [categories, setCategories] = useState([])
   const [loading, setLoading] = useState(true)
-  const [category, setCategory] = useState('all')
+  const [search, setSearch] = useState('')
+  const [selectedCategory, setSelectedCategory] = useState('all')
+  const [isAdmin, setIsAdmin] = useState(false)
 
   useEffect(() => {
     loadProducts()
+    loadCategories()
+    checkAdminRole()
   }, [])
 
-  async function loadProducts() {
-    setLoading(true)
-    const { data, error } = await supabase
-      .from('products')
-      .select('*')
-      .eq('is_active', true)
-      .order('created_at', { ascending: false })
+  // Check logged-in user's role
+  async function checkAdminRole() {
+    try {
+      const { data: { user }, error: userError } =
+        await supabase.auth.getUser()
 
-    if (error) toast.error(error.message)
-    else setProducts(data || [])
+      if (userError) throw userError
 
-    setLoading(false)
+      if (!user) {
+        setIsAdmin(false)
+        return
+      }
+
+      const { data: profile, error } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single()
+
+      if (error) throw error
+
+      setIsAdmin(profile?.role === 'admin')
+    } catch (error) {
+      console.error('Role check error:', error.message)
+      setIsAdmin(false)
+    }
   }
 
+  // Fetch products
+  async function loadProducts() {
+    try {
+      setLoading(true)
+
+      const { data, error } = await supabase
+        .from('products')
+        .select('*')
+        .eq('is_active', true)
+        .order('created_at', { ascending: false })
+
+      if (error) throw error
+
+      setProducts(data || [])
+    } catch (error) {
+      console.error('Products error:', error)
+      toast.error(error.message || 'Unable to load products')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Fetch categories
+  async function loadCategories() {
+    try {
+      const { data, error } = await supabase
+        .from('categories')
+        .select('*')
+        .order('name', { ascending: true })
+
+      if (error) throw error
+
+      setCategories(data || [])
+    } catch (error) {
+      console.error('Categories error:', error)
+    }
+  }
+
+  // Add product to cart
   async function addToCart(product) {
-    const { data: { user } } = await supabase.auth.getUser()
+    try {
+      const { data: { user }, error: userError } =
+        await supabase.auth.getUser()
 
-    if (!user) {
-      toast.error('Please login to add products to cart')
-      navigate('/login')
-      return
+      if (userError) throw userError
+
+      if (!user) {
+        toast.error('Please login first')
+        navigate('/login')
+        return
+      }
+
+      const stock = Number(product.stock || 0)
+
+      if (stock <= 0) {
+        toast.error('Product is out of stock')
+        return
+      }
+
+      const { data: existingItem, error: fetchError } = await supabase
+        .from('cart_items')
+        .select('id, quantity')
+        .eq('user_id', user.id)
+        .eq('product_id', product.id)
+        .maybeSingle()
+
+      if (fetchError) throw fetchError
+
+      if (existingItem) {
+        const newQuantity = Number(existingItem.quantity) + 1
+
+        if (newQuantity > stock) {
+          toast.error('Not enough stock available')
+          return
+        }
+
+        const { error } = await supabase
+          .from('cart_items')
+          .update({ quantity: newQuantity })
+          .eq('id', existingItem.id)
+          .eq('user_id', user.id)
+
+        if (error) throw error
+      } else {
+        const { error } = await supabase
+          .from('cart_items')
+          .insert({
+            user_id: user.id,
+            product_id: product.id,
+            quantity: 1
+          })
+
+        if (error) throw error
+      }
+
+      toast.success('Product added to cart!')
+    } catch (error) {
+      console.error('Add to cart error:', error)
+      toast.error(error.message || 'Could not add product to cart')
     }
+  }
 
-    const { data: existing, error: findError } = await supabase
-      .from('cart_items')
-      .select('id, quantity')
-      .eq('user_id', user.id)
-      .eq('product_id', product.id)
-      .maybeSingle()
+  // Add product to wishlist
+  async function addToWishlist(product) {
+    try {
+      const { data: { user }, error: userError } =
+        await supabase.auth.getUser()
 
-    if (findError) {
-      toast.error(findError.message)
-      return
-    }
+      if (userError) throw userError
 
-    if ((existing?.quantity || 0) >= product.stock) {
-      toast.error('Available stock limit reached')
-      return
-    }
+      if (!user) {
+        toast.error('Please login first')
+        navigate('/login')
+        return
+      }
 
-    const result = existing
-      ? await supabase.from('cart_items')
-          .update({ quantity: existing.quantity + 1 })
-          .eq('id', existing.id)
-      : await supabase.from('cart_items').insert({
+      const { data: existingItem, error: fetchError } = await supabase
+        .from('wishlist')
+        .select('id')
+        .eq('user_id', user.id)
+        .eq('product_id', product.id)
+        .maybeSingle()
+
+      if (fetchError) throw fetchError
+
+      if (existingItem) {
+        toast('Already in your wishlist')
+        return
+      }
+
+      const { error } = await supabase
+        .from('wishlist')
+        .insert({
           user_id: user.id,
-          product_id: product.id,
-          quantity: 1
+          product_id: product.id
         })
 
-    if (result.error) toast.error(result.error.message)
-    else toast.success('Added to cart')
+      if (error) throw error
+
+      toast.success('Added to wishlist!')
+    } catch (error) {
+      console.error('Wishlist error:', error)
+      toast.error(error.message || 'Could not add to wishlist')
+    }
   }
 
-  async function addToWishlist(product) {
-    const { data: { user } } = await supabase.auth.getUser()
+  // Search and category filters
+  const filteredProducts = products.filter((product) => {
+    const searchText = search.toLowerCase()
 
-    if (!user) {
-      toast.error('Please login to use wishlist')
-      navigate('/login')
-      return
-    }
+    const matchesSearch =
+      product.name?.toLowerCase().includes(searchText) ||
+      product.description?.toLowerCase().includes(searchText)
 
-    const { error } = await supabase.from('wishlist').insert({
-      user_id: user.id,
-      product_id: product.id
-    })
+    const matchesCategory =
+      selectedCategory === 'all' ||
+      String(product.category_id) === String(selectedCategory)
 
-    if (error?.code === '23505') {
-      toast('Already in your wishlist')
-      return
-    }
-
-    if (error) toast.error(error.message)
-    else toast.success('Added to wishlist')
-  }
-
-  const categories = [
-    'all',
-    ...new Set(products.map(p => p.category_id).filter(Boolean))
-  ]
-
-  const filtered = products.filter(product => {
-    const matchesSearch = product.name.toLowerCase().includes(search.toLowerCase())
-    const matchesCategory = category === 'all' || product.category_id === category
     return matchesSearch && matchesCategory
   })
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-white">
-      <header className="border-b border-zinc-800 bg-zinc-900 px-5 py-5">
-        <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-4">
-          <Link to="/" className="text-2xl font-bold text-blue-400">
+    <div className="min-h-screen bg-gray-50">
+
+      {/* Header */}
+      <header className="sticky top-0 z-40 border-b border-gray-100 bg-white shadow-sm">
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-4 py-4">
+
+          <Link to="/" className="text-2xl font-extrabold text-orange-600">
             WaseemTech
+            <span className="text-gray-800"> Accessories</span>
           </Link>
 
-          <div className="flex gap-3">
-            <Link to="/cart" className="flex items-center gap-2 bg-zinc-800 px-4 py-2 rounded-lg">
-              <ShoppingCart size={18} /> Cart
+          <div className="flex flex-wrap items-center gap-3">
+
+            {isAdmin && (
+              <button
+                type="button"
+                onClick={() => navigate('/admin')}
+                className="flex items-center gap-2 rounded-lg bg-orange-600 px-4 py-2 font-semibold text-white transition hover:bg-orange-700"
+              >
+                <LayoutDashboard size={18} />
+                Back to Dashboard
+              </button>
+            )}
+
+            <Link
+              to="/cart"
+              className="flex items-center gap-2 rounded-lg border px-4 py-2 text-gray-700 transition hover:border-orange-500 hover:text-orange-600"
+            >
+              <ShoppingCart size={18} />
+              Cart
             </Link>
-            <Link to="/wishlist" className="flex items-center gap-2 bg-zinc-800 px-4 py-2 rounded-lg">
-              <Heart size={18} /> Wishlist
+
+            <Link
+              to="/wishlist"
+              className="flex items-center gap-2 rounded-lg border px-4 py-2 text-gray-700 transition hover:border-orange-500 hover:text-orange-600"
+            >
+              <Heart size={18} />
+              Wishlist
             </Link>
+
           </div>
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-5 py-10">
+      {/* Main */}
+      <main className="mx-auto max-w-7xl px-4 py-10">
+
         <div className="mb-8">
-          <p className="text-blue-400 text-sm font-semibold">OUR COLLECTION</p>
-          <h1 className="text-3xl md:text-4xl font-bold mt-2">Explore Products</h1>
-          <p className="text-zinc-400 mt-2">Discover quality tech accessories at great prices.</p>
+          <h1 className="text-3xl font-extrabold text-gray-900 md:text-4xl">
+            Explore Our Products
+          </h1>
+
+          <p className="mt-2 text-gray-500">
+            Discover quality tech accessories at great prices.
+          </p>
         </div>
 
-        <div className="flex flex-col sm:flex-row gap-3 mb-8">
-          <div className="flex items-center gap-3 bg-zinc-900 border border-zinc-800 rounded-xl px-4 flex-1">
-            <Search size={19} className="text-zinc-400" />
+        {/* Search and Category */}
+        <div className="mb-8 flex flex-col gap-4 sm:flex-row">
+
+          <div className="relative flex-1">
+            <Search
+              size={20}
+              className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"
+            />
+
             <input
-              value={search}
-              onChange={e => setSearch(e.target.value)}
+              type="text"
               placeholder="Search products..."
-              className="bg-transparent outline-none py-3 w-full"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full rounded-xl border border-gray-200 bg-white py-3 pl-12 pr-4 outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100"
             />
           </div>
 
           <select
-            value={category}
-            onChange={e => setCategory(e.target.value)}
-            className="bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-3"
+            value={selectedCategory}
+            onChange={(e) => setSelectedCategory(e.target.value)}
+            className="rounded-xl border border-gray-200 bg-white px-4 py-3 outline-none focus:border-orange-500"
           >
             <option value="all">All Categories</option>
-            {categories.filter(c => c !== 'all').map(id => (
-              <option key={id} value={id}>
-                {products.find(p => p.category_id === id)?.name
-                  ? products.find(p => p.category_id === id)?.category_id
-                  : id}
+
+            {categories.map((category) => (
+              <option key={category.id} value={category.id}>
+                {category.name}
               </option>
             ))}
           </select>
+
         </div>
 
+        {/* Product Listing */}
         {loading ? (
-          <p className="text-center py-20 text-zinc-400">Loading products...</p>
-        ) : filtered.length === 0 ? (
-          <div className="text-center py-20">
-            <Package size={45} className="mx-auto text-zinc-600 mb-4" />
-            <h2 className="text-xl font-semibold">No products found</h2>
-            <p className="text-zinc-400 mt-2">Try another search or add products from Admin Dashboard.</p>
+          <div className="py-20 text-center">
+            <div className="mx-auto h-10 w-10 animate-spin rounded-full border-4 border-orange-500 border-t-transparent" />
+            <p className="mt-4 text-gray-500">Loading products...</p>
+          </div>
+        ) : filteredProducts.length === 0 ? (
+          <div className="rounded-2xl bg-white py-20 text-center shadow-sm">
+            <Package size={48} className="mx-auto text-gray-300" />
+
+            <h2 className="mt-4 text-xl font-bold text-gray-800">
+              No Products Found
+            </h2>
+
+            <p className="mt-2 text-gray-500">
+              Try another search or category.
+            </p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-            {filtered.map(product => (
-              <article key={product.id} className="bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden hover:border-blue-500/60 transition">
-                <div className="relative bg-zinc-800 aspect-square">
+          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+
+            {filteredProducts.map((product) => (
+              <div
+                key={product.id}
+                className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm transition duration-300 hover:-translate-y-1 hover:shadow-xl"
+              >
+
+                <div className="relative flex h-56 items-center justify-center bg-gray-100">
+
                   {product.image_url ? (
-                    <img src={product.image_url} alt={product.name} className="w-full h-full object-cover" />
+                    <img
+                      src={product.image_url}
+                      alt={product.name}
+                      className="h-full w-full object-cover"
+                    />
                   ) : (
-                    <div className="w-full h-full grid place-items-center text-zinc-600">
-                      <Package size={55} />
-                    </div>
+                    <Package size={55} className="text-gray-300" />
                   )}
+
                   <button
+                    type="button"
                     onClick={() => addToWishlist(product)}
-                    className="absolute top-3 right-3 bg-black/70 p-3 rounded-full hover:text-red-400"
                     aria-label="Add to wishlist"
+                    className="absolute right-3 top-3 rounded-full bg-white p-3 text-gray-600 shadow-md transition hover:bg-red-50 hover:text-red-500"
                   >
                     <Heart size={19} />
                   </button>
+
+                  {Number(product.stock || 0) <= 0 && (
+                    <span className="absolute bottom-3 left-3 rounded-lg bg-red-600 px-3 py-1 text-xs font-bold text-white">
+                      Out of Stock
+                    </span>
+                  )}
+
                 </div>
 
                 <div className="p-5">
-                  <h3 className="font-semibold text-lg">{product.name}</h3>
-                  <p className="text-zinc-400 text-sm mt-2 line-clamp-2">
+
+                  <h2 className="truncate text-lg font-bold text-gray-900">
+                    {product.name}
+                  </h2>
+
+                  <p className="mt-2 line-clamp-2 min-h-10 text-sm text-gray-500">
                     {product.description || 'Quality tech accessory.'}
                   </p>
 
-                  <div className="flex items-center gap-2 mt-4">
-                    <span className="text-xl font-bold text-blue-400">
-                      Rs. {Number(product.price).toLocaleString('en-PK')}
+                  <div className="mt-4 flex items-center justify-between">
+                    <span className="text-xl font-extrabold text-orange-600">
+                      Rs. {Number(product.price || 0).toLocaleString('en-PK')}
                     </span>
-                    {product.old_price && (
-                      <span className="text-sm text-zinc-500 line-through">
-                        Rs. {Number(product.old_price).toLocaleString('en-PK')}
-                      </span>
-                    )}
+
+                    <span className="text-xs text-gray-500">
+                      Stock: {product.stock ?? 0}
+                    </span>
                   </div>
 
-                  <p className={`text-xs mt-2 ${product.stock > 0 ? 'text-green-400' : 'text-red-400'}`}>
-                    {product.stock > 0 ? `${product.stock} in stock` : 'Out of stock'}
-                  </p>
-
                   <button
-                    disabled={product.stock <= 0}
+                    type="button"
                     onClick={() => addToCart(product)}
-                    className="w-full mt-4 bg-blue-600 hover:bg-blue-500 disabled:bg-zinc-700 rounded-xl py-3 flex justify-center items-center gap-2 font-semibold"
+                    disabled={Number(product.stock || 0) <= 0}
+                    className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-orange-600 py-3 font-semibold text-white transition hover:bg-orange-700 disabled:cursor-not-allowed disabled:bg-gray-300"
                   >
-                    <ShoppingCart size={18} /> Add to Cart
+                    <ShoppingCart size={18} />
+                    {Number(product.stock || 0) <= 0
+                      ? 'Out of Stock'
+                      : 'Add to Cart'}
                   </button>
+
                 </div>
-              </article>
+              </div>
             ))}
+
           </div>
         )}
+
       </main>
     </div>
   )
