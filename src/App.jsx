@@ -1,15 +1,17 @@
+
 import Cart from './pages/Cart'
 import Wishlist from './pages/Wishlist'
 import Checkout from './pages/Checkout'
-import Shop from "./pages/Shop.jsx"
-import AdminDashboard from './pages/AdminDashboard'
+import Shop from './pages/Shop.jsx'
+import AdminDashboardPro from './pages/AdminDashboardPro'
 import ForgotPassword from './pages/ForgotPassword'
 import ResetPassword from './pages/ResetPassword'
+import Signup from './pages/Signup'
+import Login from './pages/Login'
+
 import { useEffect, useState } from 'react'
 import { BrowserRouter, Routes, Route, Link } from 'react-router-dom'
 import { testSupabaseConnection } from './lib/supabase'
-import Signup from './pages/Signup'
-import Login from './pages/Login'
 
 import {
   Search,
@@ -139,9 +141,9 @@ function HomePage() {
               <Search size={21} />
             </button>
 
-            <button aria-label="Shopping bag">
+            <Link to="/cart" aria-label="Shopping bag">
               <ShoppingBag size={21} />
-            </button>
+            </Link>
 
             <Link
               to="/login"
@@ -165,8 +167,10 @@ function HomePage() {
       </nav>
 
       {/* Hero */}
-      <section id="home" className="max-w-7xl mx-auto px-6 py-20 grid md:grid-cols-2 gap-12 items-center">
-
+      <section
+        id="home"
+        className="max-w-7xl mx-auto px-6 py-20 grid md:grid-cols-2 gap-12 items-center"
+      >
         <div>
           <p className="text-blue-400 uppercase tracking-[3px] font-semibold text-sm">
             Technology made simple
@@ -182,12 +186,12 @@ function HomePage() {
             designed to improve your everyday technology experience.
           </p>
 
-          <a
-            href="#products"
+          <Link
+            to="/shop"
             className="inline-flex items-center gap-3 bg-blue-600 hover:bg-blue-700 px-7 py-4 rounded-lg mt-8 font-semibold"
           >
             Explore Products <ArrowRight size={19} />
-          </a>
+          </Link>
         </div>
 
         <img
@@ -200,7 +204,6 @@ function HomePage() {
       {/* Benefits */}
       <section className="border-y border-zinc-800 bg-zinc-900/60">
         <div className="max-w-7xl mx-auto px-6 py-10 grid sm:grid-cols-2 md:grid-cols-4 gap-8">
-
           {[
             { icon: Truck, title: 'Fast Delivery', desc: 'Reliable order delivery' },
             { icon: ShieldCheck, title: 'Secure Shopping', desc: 'Safe shopping experience' },
@@ -227,7 +230,6 @@ function HomePage() {
 
       {/* Categories */}
       <section id="categories" className="max-w-7xl mx-auto px-6 py-20">
-
         <p className="text-blue-400 text-sm uppercase tracking-widest font-semibold">
           Browse Collection
         </p>
@@ -238,8 +240,8 @@ function HomePage() {
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {categories.map((category, index) => (
-            <a
-              href="#products"
+            <Link
+              to="/shop"
               key={category}
               className="p-7 rounded-xl border border-zinc-800 bg-zinc-900 hover:border-blue-500 transition"
             >
@@ -252,16 +254,14 @@ function HomePage() {
               <p className="text-zinc-500 text-sm mt-2">
                 Explore collection
               </p>
-            </a>
+            </Link>
           ))}
         </div>
       </section>
 
       {/* Products */}
       <section id="products" className="bg-zinc-900/50 py-20">
-
         <div className="max-w-7xl mx-auto px-6">
-
           <p className="text-blue-400 text-sm uppercase tracking-widest font-semibold">
             Featured Collection
           </p>
@@ -271,7 +271,6 @@ function HomePage() {
           </h2>
 
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-7">
-
             {products.map((product) => (
               <div
                 key={product.id}
@@ -307,9 +306,12 @@ function HomePage() {
                     </span>
                   </div>
 
-                  <button className="w-full mt-5 py-3 rounded-lg bg-blue-600 hover:bg-blue-700 font-semibold">
-                    Add to Cart
-                  </button>
+                  <Link
+                    to="/shop"
+                    className="block text-center w-full mt-5 py-3 rounded-lg bg-blue-600 hover:bg-blue-700 font-semibold"
+                  >
+                    Shop Now
+                  </Link>
                 </div>
               </div>
             ))}
@@ -319,9 +321,7 @@ function HomePage() {
 
       {/* Footer */}
       <footer id="footer" className="border-t border-zinc-800 py-12 px-6">
-
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between gap-6">
-
           <div>
             <h2 className="text-2xl font-bold">
               Waseem<span className="text-blue-500">Tech.</span>
@@ -350,17 +350,19 @@ function App() {
         <Route path="/signup" element={<Signup />} />
         <Route path="/login" element={<Login />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
-<Route path="/reset-password" element={<ResetPassword />} />
-<Route path="/admin" element={<AdminDashboard />} />
-<Route path="/shop" element={<Shop />} />
-<Route path="/cart" element={<Cart />} />
-<Route path="/checkout" element={<Checkout />} />
-<Route path="/wishlist" element={<Wishlist />} />
+        <Route path="/reset-password" element={<ResetPassword />} />
+
+        {/* New Professional Admin Dashboard */}
+        <Route path="/admin" element={<AdminDashboardPro />} />
+
+        <Route path="/shop" element={<Shop />} />
+        <Route path="/cart" element={<Cart />} />
+        <Route path="/checkout" element={<Checkout />} />
+        <Route path="/wishlist" element={<Wishlist />} />
 
         <Route
           path="*"
           element={
-
             <div className="min-h-screen bg-zinc-950 text-white flex flex-col items-center justify-center gap-4">
               <h1 className="text-5xl font-bold">404</h1>
               <p className="text-zinc-400">Page not found</p>
