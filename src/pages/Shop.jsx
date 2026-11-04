@@ -10,7 +10,6 @@ import {
   SlidersHorizontal,
   X,
   Eye,
-  ArrowUpDown,
   RefreshCw,
   Check,
   Star,
@@ -42,12 +41,14 @@ export default function Shop() {
   const [isAdmin, setIsAdmin] = useState(false)
   const [wishlistIds, setWishlistIds] = useState([])
   const [addingProduct, setAddingProduct] = useState(null)
+  const [cartCount, setCartCount] = useState(0)
 
   useEffect(() => {
     loadProducts()
     loadCategories()
     checkAdminRole()
     loadWishlist()
+    loadCartCount()
   }, [])
 
   useEffect(() => {
@@ -62,7 +63,6 @@ export default function Shop() {
     featuredOnly
   ])
 
-  // Check admin role
   async function checkAdminRole() {
     try {
       const {
@@ -92,7 +92,6 @@ export default function Shop() {
     }
   }
 
-  // Load products
   async function loadProducts() {
     try {
       setLoading(true)
@@ -114,7 +113,6 @@ export default function Shop() {
     }
   }
 
-  // Load categories
   async function loadCategories() {
     try {
       const { data, error } = await supabase
@@ -130,7 +128,6 @@ export default function Shop() {
     }
   }
 
-  // Load user's wishlist
   async function loadWishlist() {
     try {
       const {
@@ -154,7 +151,38 @@ export default function Shop() {
     }
   }
 
-  // Add product to cart
+  async function loadCartCount() {
+    try {
+      const {
+        data: { user },
+        error: userError
+      } = await supabase.auth.getUser()
+
+      if (userError) throw userError
+
+      if (!user) {
+        setCartCount(0)
+        return
+      }
+
+      const { data, error } = await supabase
+        .from('cart_items')
+        .select('quantity')
+        .eq('user_id', user.id)
+
+      if (error) throw error
+
+      const total = (data || []).reduce(
+        (sum, item) => sum + Number(item.quantity || 0),
+        0
+      )
+
+      setCartCount(total)
+    } catch (error) {
+      console.error('Cart count error:', error)
+    }
+  }
+
   async function addToCart(product) {
     try {
       setAddingProduct(product.id)
@@ -215,6 +243,7 @@ export default function Shop() {
         if (error) throw error
       }
 
+      await loadCartCount()
       toast.success('Product added to cart!')
     } catch (error) {
       console.error('Add to cart error:', error)
@@ -224,7 +253,6 @@ export default function Shop() {
     }
   }
 
-  // Add or remove wishlist item
   async function toggleWishlist(product) {
     try {
       const {
@@ -275,7 +303,6 @@ export default function Shop() {
     }
   }
 
-  // Apply search, filters and sorting
   const filteredProducts = useMemo(() => {
     let result = [...products]
 
@@ -351,7 +378,6 @@ export default function Shop() {
     sortBy
   ])
 
-  // Pagination
   const totalPages = Math.ceil(
     filteredProducts.length / PRODUCTS_PER_PAGE
   )
@@ -363,7 +389,6 @@ export default function Shop() {
     startIndex + PRODUCTS_PER_PAGE
   )
 
-  // Reset filters
   function resetFilters() {
     setSearch('')
     setSelectedCategory('all')
@@ -376,17 +401,71 @@ export default function Shop() {
   }
 
   return (
-    <div className="min-h-screen bg-[#f7f8f5] text-gray-900">
+    <div className="shop-page min-h-screen bg-[#f7f8f5] text-gray-900">
+
+      <style>{`
+        .shop-page {
+          color: #24212B;
+        }
+
+        /* Purple backgrounds always have white text */
+        .shop-page .text-white {
+          color: #ffffff !important;
+        }
+
+        .shop-page .bg-purple-800,
+        .shop-page .bg-purple-900,
+        .shop-page .bg-purple-950,
+        .shop-page .bg-emerald-700,
+        .shop-page .bg-red-500,
+        .shop-page .bg-red-600 {
+          color: #ffffff !important;
+        }
+
+        /* White surfaces use dark readable text */
+        .shop-page .bg-white {
+          color: #24212B;
+        }
+
+        .shop-page .bg-white h1,
+        .shop-page .bg-white h2,
+        .shop-page .bg-white h3 {
+          color: #24212B;
+        }
+
+        .shop-page input,
+        .shop-page select,
+        .shop-page textarea {
+          color: #24212B !important;
+          background-color: #ffffff !important;
+        }
+
+        .shop-page input::placeholder {
+          color: #898392 !important;
+        }
+
+        .shop-page button:disabled {
+          cursor: not-allowed;
+        }
+
+        .shop-page .purple-action {
+          background: #5B3A8E;
+          color: #ffffff !important;
+        }
+
+        .shop-page .purple-action:hover {
+          background: #482b75;
+          color: #ffffff !important;
+        }
+      `}</style>
 
       {/* Header */}
       <header className="sticky top-0 z-40 border-b border-gray-200 bg-white/95 shadow-sm backdrop-blur">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-4 py-4">
 
           <Link to="/" className="text-2xl font-extrabold tracking-tight text-purple-800">
-            WaseemTech<span className="text-emerald-600">.</span>
-            <span className="ml-1 text-sm font-medium text-gray-500">
-              Accessories
-            </span>
+            <span className="text-purple-800">LapMob</span>
+            <span className="text-emerald-600">.</span>
           </Link>
 
           <div className="flex flex-wrap items-center gap-2">
@@ -395,7 +474,7 @@ export default function Shop() {
               <button
                 type="button"
                 onClick={() => navigate('/admin')}
-                className="flex items-center gap-2 rounded-xl bg-purple-800 px-3 py-2 text-sm font-semibold text-white transition hover:bg-purple-900"
+                className="purple-action flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition hover:-translate-y-0.5"
               >
                 <LayoutDashboard size={17} />
                 Dashboard
@@ -404,15 +483,20 @@ export default function Shop() {
 
             <Link
               to="/cart"
-              className="flex items-center gap-2 rounded-xl border border-gray-200 px-3 py-2 text-sm font-semibold transition hover:border-emerald-500 hover:text-emerald-700"
+              className="relative flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-800 transition hover:border-purple-500 hover:text-purple-800"
             >
               <ShoppingCart size={18} />
               Cart
+              {cartCount > 0 && (
+                <span className="absolute -right-2 -top-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-purple-800 px-1 text-xs font-bold text-white">
+                  {cartCount > 99 ? '99+' : cartCount}
+                </span>
+              )}
             </Link>
 
             <Link
               to="/wishlist"
-              className="flex items-center gap-2 rounded-xl border border-gray-200 px-3 py-2 text-sm font-semibold transition hover:border-emerald-500 hover:text-emerald-700"
+              className="flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-800 transition hover:border-purple-500 hover:text-purple-800"
             >
               <Heart size={18} />
               Wishlist
@@ -425,11 +509,12 @@ export default function Shop() {
       {/* Hero */}
       <section className="bg-gradient-to-r from-purple-950 via-purple-900 to-emerald-900 text-white">
         <div className="mx-auto max-w-7xl px-4 py-14 md:py-20">
+
           <p className="mb-3 text-sm font-semibold uppercase tracking-[3px] text-emerald-300">
             Technology made simple
           </p>
 
-          <h1 className="max-w-2xl text-4xl font-extrabold leading-tight md:text-5xl">
+          <h1 className="max-w-2xl text-4xl font-extrabold leading-tight text-white md:text-5xl">
             Discover Your Next
             <span className="block text-emerald-300">Tech Essential.</span>
           </h1>
@@ -439,7 +524,7 @@ export default function Shop() {
             designed for your everyday lifestyle.
           </p>
 
-          <div className="mt-7 inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-4 py-2 text-sm">
+          <div className="mt-7 inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-4 py-2 text-sm text-white">
             <ShoppingBag size={16} className="text-emerald-300" />
             {products.length} products available
           </div>
@@ -449,7 +534,6 @@ export default function Shop() {
       {/* Main */}
       <main className="mx-auto max-w-7xl px-4 py-10">
 
-        {/* Page heading */}
         <div className="mb-7 flex flex-wrap items-end justify-between gap-4">
           <div>
             <p className="text-sm font-bold uppercase tracking-widest text-emerald-700">
@@ -460,29 +544,33 @@ export default function Shop() {
               Shop Accessories
             </h2>
 
-            <p className="mt-2 text-sm text-gray-500">
+            <p className="mt-2 text-sm text-gray-600">
               Find the right accessories for your technology.
             </p>
           </div>
 
           <button
-            onClick={loadProducts}
+            onClick={() => {
+              loadProducts()
+              loadCategories()
+              loadCartCount()
+            }}
             type="button"
-            className="flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 transition hover:border-purple-400"
+            className="flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-800 transition hover:border-purple-400"
           >
             <RefreshCw size={16} />
             Refresh
           </button>
         </div>
 
-        {/* Search */}
-        <div className="mb-6 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+        {/* Search and sorting */}
+        <div className="mb-6 rounded-2xl border border-gray-200 bg-white p-4 text-gray-900 shadow-sm">
           <div className="flex flex-col gap-4 lg:flex-row">
 
             <div className="relative flex-1">
               <Search
                 size={20}
-                className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"
+                className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500"
               />
 
               <input
@@ -490,17 +578,16 @@ export default function Shop() {
                 placeholder="Search products by name or description..."
                 value={search}
                 onChange={e => setSearch(e.target.value)}
-                className="w-full rounded-xl border border-gray-200 bg-gray-50 py-3 pl-12 pr-4 outline-none transition focus:border-purple-500 focus:bg-white focus:ring-2 focus:ring-purple-100"
+                className="w-full rounded-xl border border-gray-200 bg-gray-50 py-3 pl-12 pr-4 text-gray-900 outline-none transition focus:border-purple-500 focus:bg-white focus:ring-2 focus:ring-purple-100"
               />
             </div>
 
             <select
               value={selectedCategory}
               onChange={e => setSelectedCategory(e.target.value)}
-              className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 outline-none focus:border-purple-500"
+              className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-gray-900 outline-none focus:border-purple-500"
             >
               <option value="all">All Categories</option>
-
               {categories.map(category => (
                 <option key={category.id} value={category.id}>
                   {category.name}
@@ -511,7 +598,7 @@ export default function Shop() {
             <select
               value={sortBy}
               onChange={e => setSortBy(e.target.value)}
-              className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 outline-none focus:border-purple-500"
+              className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-gray-900 outline-none focus:border-purple-500"
             >
               <option value="newest">Newest First</option>
               <option value="price-low">Price: Low to High</option>
@@ -523,10 +610,10 @@ export default function Shop() {
         </div>
 
         {/* Filters */}
-        <div className="mb-8 grid grid-cols-1 gap-4 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm md:grid-cols-2 lg:grid-cols-4">
+        <div className="mb-8 grid grid-cols-1 gap-4 rounded-2xl border border-gray-200 bg-white p-5 text-gray-900 shadow-sm md:grid-cols-2 lg:grid-cols-4">
 
           <div>
-            <label className="mb-2 block text-sm font-semibold text-gray-700">
+            <label className="mb-2 block text-sm font-semibold text-gray-800">
               Minimum Price (Rs.)
             </label>
 
@@ -536,12 +623,12 @@ export default function Shop() {
               placeholder="e.g. 1000"
               value={minPrice}
               onChange={e => setMinPrice(e.target.value)}
-              className="w-full rounded-xl border border-gray-200 px-3 py-2.5 outline-none focus:border-purple-500"
+              className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-gray-900 outline-none focus:border-purple-500"
             />
           </div>
 
           <div>
-            <label className="mb-2 block text-sm font-semibold text-gray-700">
+            <label className="mb-2 block text-sm font-semibold text-gray-800">
               Maximum Price (Rs.)
             </label>
 
@@ -551,7 +638,7 @@ export default function Shop() {
               placeholder="e.g. 10000"
               value={maxPrice}
               onChange={e => setMaxPrice(e.target.value)}
-              className="w-full rounded-xl border border-gray-200 px-3 py-2.5 outline-none focus:border-purple-500"
+              className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-gray-900 outline-none focus:border-purple-500"
             />
           </div>
 
@@ -560,10 +647,9 @@ export default function Shop() {
               type="checkbox"
               checked={inStockOnly}
               onChange={e => setInStockOnly(e.target.checked)}
-              className="h-4 w-4 accent-emerald-600"
+              className="h-4 w-4 accent-purple-700"
             />
-
-            <span className="text-sm font-semibold text-gray-700">
+            <span className="text-sm font-semibold text-gray-800">
               In-stock products only
             </span>
           </label>
@@ -573,16 +659,15 @@ export default function Shop() {
               type="checkbox"
               checked={featuredOnly}
               onChange={e => setFeaturedOnly(e.target.checked)}
-              className="h-4 w-4 accent-emerald-600"
+              className="h-4 w-4 accent-purple-700"
             />
-
-            <span className="text-sm font-semibold text-gray-700">
+            <span className="text-sm font-semibold text-gray-800">
               Featured products only
             </span>
           </label>
 
           <div className="flex items-center justify-between gap-3 md:col-span-2 lg:col-span-4">
-            <p className="flex items-center gap-2 text-sm text-gray-500">
+            <p className="flex items-center gap-2 text-sm text-gray-600">
               <SlidersHorizontal size={16} />
               {filteredProducts.length} matching products
             </p>
@@ -590,7 +675,7 @@ export default function Shop() {
             <button
               type="button"
               onClick={resetFilters}
-              className="flex items-center gap-2 text-sm font-semibold text-purple-700 hover:text-purple-900"
+              className="flex items-center gap-2 text-sm font-semibold text-purple-800 hover:text-purple-950"
             >
               <RefreshCw size={15} />
               Clear Filters
@@ -616,20 +701,20 @@ export default function Shop() {
             ))}
           </div>
         ) : filteredProducts.length === 0 ? (
-          <div className="rounded-2xl border border-gray-200 bg-white px-5 py-20 text-center shadow-sm">
-            <Package size={55} className="mx-auto text-gray-300" />
+          <div className="rounded-2xl border border-gray-200 bg-white px-5 py-20 text-center text-gray-900 shadow-sm">
+            <Package size={55} className="mx-auto text-gray-400" />
 
-            <h3 className="mt-5 text-xl font-bold text-gray-800">
+            <h3 className="mt-5 text-xl font-bold text-gray-900">
               No Products Found
             </h3>
 
-            <p className="mt-2 text-sm text-gray-500">
+            <p className="mt-2 text-sm text-gray-600">
               Try changing your search or filters.
             </p>
 
             <button
               onClick={resetFilters}
-              className="mt-6 rounded-xl bg-purple-800 px-6 py-3 font-semibold text-white hover:bg-purple-900"
+              className="purple-action mt-6 rounded-xl px-6 py-3 font-semibold"
             >
               Clear All Filters
             </button>
@@ -641,7 +726,7 @@ export default function Shop() {
                 Available Products
               </h3>
 
-              <span className="text-sm text-gray-500">
+              <span className="text-sm text-gray-600">
                 Showing {startIndex + 1}–
                 {Math.min(startIndex + PRODUCTS_PER_PAGE, filteredProducts.length)}
                 {' '}of {filteredProducts.length}
@@ -657,7 +742,7 @@ export default function Shop() {
                 return (
                   <article
                     key={product.id}
-                    className="group overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm transition duration-300 hover:-translate-y-1 hover:border-emerald-300 hover:shadow-xl"
+                    className="group overflow-hidden rounded-2xl border border-gray-200 bg-white text-gray-900 shadow-sm transition duration-300 hover:-translate-y-1 hover:border-purple-300 hover:shadow-xl"
                   >
                     <div className="relative flex h-60 items-center justify-center overflow-hidden bg-gray-100">
 
@@ -669,7 +754,7 @@ export default function Shop() {
                           className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
                         />
                       ) : (
-                        <Package size={60} className="text-gray-300" />
+                        <Package size={60} className="text-gray-400" />
                       )}
 
                       {product.is_featured && (
@@ -686,7 +771,7 @@ export default function Shop() {
                         className={`absolute right-3 top-3 rounded-full p-3 shadow-md transition ${
                           isWishlisted
                             ? 'bg-red-500 text-white'
-                            : 'bg-white text-gray-600 hover:bg-red-50 hover:text-red-500'
+                            : 'bg-white text-gray-700 hover:bg-red-50 hover:text-red-600'
                         }`}
                       >
                         <Heart
@@ -706,7 +791,7 @@ export default function Shop() {
                       <button
                         type="button"
                         onClick={() => setSelectedProduct(product)}
-                        className="absolute bottom-3 right-3 flex items-center gap-2 rounded-lg bg-white px-3 py-2 text-xs font-bold text-gray-800 opacity-0 shadow-md transition group-hover:opacity-100"
+                        className="absolute bottom-3 right-3 flex items-center gap-2 rounded-lg bg-white px-3 py-2 text-xs font-bold text-gray-900 opacity-0 shadow-md transition group-hover:opacity-100 focus:opacity-100"
                       >
                         <Eye size={15} />
                         Quick View
@@ -725,7 +810,7 @@ export default function Shop() {
                         {product.name}
                       </h3>
 
-                      <p className="mt-2 line-clamp-2 min-h-10 text-sm leading-5 text-gray-500">
+                      <p className="mt-2 line-clamp-2 min-h-10 text-sm leading-5 text-gray-600">
                         {product.description || 'Quality tech accessory.'}
                       </p>
 
@@ -734,7 +819,7 @@ export default function Shop() {
                           Rs. {formatPrice(product.price)}
                         </span>
 
-                        <span className="text-xs text-gray-500">
+                        <span className="text-xs text-gray-600">
                           Stock: {product.stock ?? 0}
                         </span>
                       </div>
@@ -743,7 +828,7 @@ export default function Shop() {
                         type="button"
                         onClick={() => addToCart(product)}
                         disabled={outOfStock || addingProduct === product.id}
-                        className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-purple-800 py-3 font-semibold text-white transition hover:bg-purple-900 disabled:cursor-not-allowed disabled:bg-gray-300"
+                        className="purple-action mt-5 flex w-full items-center justify-center gap-2 rounded-xl py-3 font-semibold transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:bg-gray-300 disabled:text-gray-700"
                       >
                         {addingProduct === product.id ? (
                           <>
@@ -767,16 +852,20 @@ export default function Shop() {
             {/* Pagination */}
             {totalPages > 1 && (
               <div className="mt-10 flex flex-wrap items-center justify-center gap-2">
+
                 <button
                   type="button"
                   disabled={currentPage === 1}
                   onClick={() => setCurrentPage(prev => prev - 1)}
-                  className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-semibold disabled:opacity-40"
+                  className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-800 disabled:opacity-40"
                 >
                   Previous
                 </button>
 
-                {Array.from({ length: totalPages }, (_, index) => index + 1).map(page => (
+                {Array.from(
+                  { length: totalPages },
+                  (_, index) => index + 1
+                ).map(page => (
                   <button
                     type="button"
                     key={page}
@@ -784,7 +873,7 @@ export default function Shop() {
                     className={`h-10 w-10 rounded-lg text-sm font-bold transition ${
                       currentPage === page
                         ? 'bg-purple-800 text-white'
-                        : 'border border-gray-200 bg-white text-gray-700 hover:border-purple-500'
+                        : 'border border-gray-200 bg-white text-gray-800 hover:border-purple-500'
                     }`}
                   >
                     {page}
@@ -795,10 +884,11 @@ export default function Shop() {
                   type="button"
                   disabled={currentPage === totalPages}
                   onClick={() => setCurrentPage(prev => prev + 1)}
-                  className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-semibold disabled:opacity-40"
+                  className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-800 disabled:opacity-40"
                 >
                   Next
                 </button>
+
               </div>
             )}
           </>
@@ -815,19 +905,20 @@ export default function Shop() {
             role="dialog"
             aria-modal="true"
             aria-label="Product quick view"
-            className="relative my-auto w-full max-w-3xl overflow-hidden rounded-2xl bg-white shadow-2xl"
+            className="relative my-auto w-full max-w-3xl overflow-hidden rounded-2xl bg-white text-gray-900 shadow-2xl"
             onClick={e => e.stopPropagation()}
           >
             <button
               type="button"
               onClick={() => setSelectedProduct(null)}
               aria-label="Close quick view"
-              className="absolute right-4 top-4 z-10 rounded-full bg-white p-2 shadow-md hover:bg-gray-100"
+              className="absolute right-4 top-4 z-10 rounded-full bg-white p-2 text-gray-900 shadow-md hover:bg-gray-100"
             >
               <X size={20} />
             </button>
 
             <div className="grid md:grid-cols-2">
+
               <div className="flex min-h-64 items-center justify-center bg-gray-100">
                 {selectedProduct.image_url ? (
                   <img
@@ -836,7 +927,7 @@ export default function Shop() {
                     className="h-full max-h-96 w-full object-cover"
                   />
                 ) : (
-                  <Package size={75} className="text-gray-300" />
+                  <Package size={75} className="text-gray-400" />
                 )}
               </div>
 
@@ -849,7 +940,7 @@ export default function Shop() {
                   {selectedProduct.name}
                 </h2>
 
-                <p className="mt-4 leading-7 text-gray-500">
+                <p className="mt-4 leading-7 text-gray-600">
                   {selectedProduct.description || 'Quality tech accessory.'}
                 </p>
 
@@ -857,7 +948,7 @@ export default function Shop() {
                   Rs. {formatPrice(selectedProduct.price)}
                 </p>
 
-                <p className="mt-3 flex items-center gap-2 text-sm text-gray-600">
+                <p className="mt-3 flex items-center gap-2 text-sm text-gray-700">
                   <Check size={16} className="text-emerald-600" />
                   {Number(selectedProduct.stock || 0) > 0
                     ? `${selectedProduct.stock} units available`
@@ -868,7 +959,7 @@ export default function Shop() {
                   type="button"
                   disabled={Number(selectedProduct.stock || 0) <= 0}
                   onClick={() => addToCart(selectedProduct)}
-                  className="mt-7 flex items-center justify-center gap-2 rounded-xl bg-purple-800 py-3 font-bold text-white hover:bg-purple-900 disabled:bg-gray-300"
+                  className="purple-action mt-7 flex items-center justify-center gap-2 rounded-xl py-3 font-bold disabled:bg-gray-300 disabled:text-gray-700"
                 >
                   <ShoppingCart size={18} />
                   Add to Cart
@@ -877,7 +968,7 @@ export default function Shop() {
                 <button
                   type="button"
                   onClick={() => toggleWishlist(selectedProduct)}
-                  className="mt-3 flex items-center justify-center gap-2 rounded-xl border border-gray-200 py-3 font-semibold text-gray-700 hover:border-emerald-500"
+                  className="mt-3 flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white py-3 font-semibold text-gray-800 hover:border-purple-500"
                 >
                   <Heart
                     size={18}
@@ -898,19 +989,21 @@ export default function Shop() {
       )}
 
       {/* Footer */}
-      <footer className="mt-12 border-t border-gray-200 bg-white">
+      <footer className="mt-12 border-t border-gray-200 bg-white text-gray-900">
         <div className="mx-auto flex max-w-7xl flex-col justify-between gap-4 px-4 py-8 sm:flex-row">
+
           <div>
             <h3 className="text-xl font-extrabold text-purple-800">
-              WaseemTech<span className="text-emerald-600">.</span>
+              LapMob<span className="text-emerald-600">.</span>
             </h3>
-            <p className="mt-1 text-sm text-gray-500">
+
+            <p className="mt-1 text-sm text-gray-600">
               Your destination for quality tech accessories.
             </p>
           </div>
 
-          <p className="self-center text-sm text-gray-500">
-            © 2026 WaseemTech Accessories. All rights reserved.
+          <p className="self-center text-sm text-gray-600">
+            © 2026 LapMob. All rights reserved.
           </p>
         </div>
       </footer>
