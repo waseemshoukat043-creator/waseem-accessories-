@@ -1,15 +1,15 @@
-
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Package, Tags, ShoppingCart, CreditCard, Users,
   Plus, Trash2, Edit, LogOut, RefreshCw, X, Store, Search,
   TrendingUp, Wallet, AlertTriangle, Download, BarChart3,
-  CheckCircle2, Clock, Eye, Star, Menu
+  Eye, Star, Menu, Truck
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { supabase } from '../lib/supabase'
 import { logoutUser } from '../lib/auth'
+import Dropshipping from './Dropshipping'
 
 const money = value =>
   `Rs. ${Number(value || 0).toLocaleString('en-PK')}`
@@ -20,7 +20,8 @@ const navItems = [
   { id: 'categories', label: 'Categories', icon: Tags },
   { id: 'orders', label: 'Orders', icon: ShoppingCart },
   { id: 'payments', label: 'Payments', icon: CreditCard },
-  { id: 'customers', label: 'Customers', icon: Users }
+  { id: 'customers', label: 'Customers', icon: Users },
+  { id: 'dropshipping', label: 'Dropshipping', icon: Truck }
 ]
 
 const orderStatuses = [
@@ -85,7 +86,10 @@ function StatusBadge({ value }) {
     delivered: 'bg-lime-100 text-lime-800',
     cancelled: 'bg-red-100 text-red-800',
     approved: 'bg-lime-100 text-lime-800',
-    rejected: 'bg-red-100 text-red-800'
+    rejected: 'bg-red-100 text-red-800',
+    submitted: 'bg-blue-100 text-blue-800',
+    paid: 'bg-lime-100 text-lime-800',
+    unpaid: 'bg-slate-100 text-slate-700'
   }
 
   return (
@@ -222,7 +226,8 @@ export default function AdminDashboardPro() {
         .filter(order => {
           if (!order.created_at) return false
           const orderDate = new Date(order.created_at)
-          return orderDate.getMonth() === month && orderDate.getFullYear() === year
+          return orderDate.getMonth() === month &&
+            orderDate.getFullYear() === year
         })
         .reduce((sum, order) => sum + Number(order.total_amount || 0), 0)
 
@@ -250,8 +255,7 @@ export default function AdminDashboardPro() {
       maxDaily,
       monthly,
       maxMonthly,
-      statusCounts,
-      validOrders
+      statusCounts
     }
   }, [orders, products, payments])
 
@@ -261,17 +265,25 @@ export default function AdminDashboardPro() {
 
   const filteredOrders = orders.filter(order => {
     const matchesSearch =
-      String(order.order_number || order.id).toLowerCase().includes(search.toLowerCase())
+      String(order.order_number || order.id)
+        .toLowerCase()
+        .includes(search.toLowerCase())
+
     const matchesStatus =
       orderFilter === 'all' || order.order_status === orderFilter
+
     return matchesSearch && matchesStatus
   })
 
   const filteredPayments = payments.filter(payment => {
     const matchesSearch =
-      String(payment.transaction_id || payment.id).toLowerCase().includes(search.toLowerCase())
+      String(payment.transaction_id || payment.id)
+        .toLowerCase()
+        .includes(search.toLowerCase())
+
     const matchesStatus =
       paymentFilter === 'all' || payment.status === paymentFilter
+
     return matchesSearch && matchesStatus
   })
 
@@ -311,18 +323,20 @@ export default function AdminDashboardPro() {
       return
     }
 
-    if (Number(form.price) < 0 || Number(form.stock) < 0) {
-      toast.error('Price and stock cannot be negative')
+    if (
+      Number(form.price) < 0 ||
+      Number(form.stock) < 0 ||
+      (form.old_price !== '' && Number(form.old_price) < 0)
+    ) {
+      toast.error('Prices and stock cannot be negative')
       return
     }
 
     setSaving(true)
 
-    const slug =
-      form.name.toLowerCase().trim()
-        .replace(/[^a-z0-9]+/g, '-')
-        .replace(/^-|-$/g, '') +
-      '-' + Date.now()
+    const slug = form.name.toLowerCase().trim()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '') + '-' + Date.now()
 
     const payload = {
       name: form.name.trim(),
@@ -432,7 +446,9 @@ export default function AdminDashboardPro() {
 
     const csv = [
       headers.map(escapeCSV).join(','),
-      ...rows.map(row => headers.map(key => escapeCSV(row[key])).join(','))
+      ...rows.map(row =>
+        headers.map(key => escapeCSV(row[key])).join(',')
+      )
     ].join('\n')
 
     const blob = new Blob([`\uFEFF${csv}`], {
@@ -462,7 +478,9 @@ export default function AdminDashboardPro() {
       <div className="grid min-h-screen place-items-center bg-slate-50">
         <div className="text-center">
           <RefreshCw className="mx-auto animate-spin text-purple-700" size={34} />
-          <p className="mt-3 text-sm font-medium text-slate-500">Loading your dashboard...</p>
+          <p className="mt-3 text-sm font-medium text-slate-500">
+            Loading your dashboard...
+          </p>
         </div>
       </div>
     )
@@ -476,7 +494,8 @@ export default function AdminDashboardPro() {
     categories: 'Category Management',
     orders: 'Order Management',
     payments: 'Payment Management',
-    customers: 'Customer Directory'
+    customers: 'Customer Directory',
+    dropshipping: 'Dropshipping Management'
   }
 
   return (
@@ -489,8 +508,12 @@ export default function AdminDashboardPro() {
             <Store size={25} />
           </div>
           <div>
-            <h1 className="text-xl font-extrabold tracking-tight text-purple-950">WaseemTech</h1>
-            <p className="text-[10px] font-bold tracking-[0.2em] text-lime-700">ADMIN CONTROL</p>
+            <h1 className="text-xl font-extrabold tracking-tight text-purple-950">
+              LapMob
+            </h1>
+            <p className="text-[10px] font-bold tracking-[0.2em] text-lime-700">
+              ADMIN CONTROL
+            </p>
           </div>
           <button className="ml-auto md:hidden" onClick={() => setMobileMenu(false)}>
             <X size={21} />
@@ -535,10 +558,12 @@ export default function AdminDashboardPro() {
 
         <div className="mt-auto rounded-2xl bg-gradient-to-br from-purple-900 to-purple-700 p-4 text-white">
           <div className="mb-3 flex items-center gap-2">
-            <div className="rounded-lg bg-white/15 p-2"><Store size={18} /></div>
-            <span className="text-sm font-bold">Your Store</span>
+            <div className="rounded-lg bg-white/15 p-2">
+              <Store size={18} />
+            </div>
+            <span className="text-sm font-bold">LapMob Store</span>
           </div>
-          <p className="text-xs leading-5 text-purple-100">
+          <p className="text-xs leading-5 text-white">
             Manage products, orders and customers from one place.
           </p>
           <button
@@ -559,7 +584,6 @@ export default function AdminDashboardPro() {
 
       {/* Main Content */}
       <main className="min-w-0 flex-1 p-4 sm:p-6 lg:p-9">
-
         <header className="mb-8 flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <button
@@ -570,12 +594,12 @@ export default function AdminDashboardPro() {
             </button>
             <div>
               <p className="text-xs font-semibold uppercase tracking-widest text-lime-700">
-                WaseemTech Accessories
+                LapMob Accessories
               </p>
               <h2 className="mt-1 text-2xl font-extrabold tracking-tight text-purple-950">
                 {pageTitles[tab]}
               </h2>
-              <p className="mt-1 text-sm text-slate-500">
+              <p className="mt-1 text-sm text-slate-600">
                 Manage your online store with confidence.
               </p>
             </div>
@@ -589,6 +613,9 @@ export default function AdminDashboardPro() {
           </button>
         </header>
 
+        {/* Dropshipping */}
+        {tab === 'dropshipping' && <Dropshipping />}
+
         {/* Overview */}
         {tab === 'overview' && (
           <>
@@ -601,7 +628,7 @@ export default function AdminDashboardPro() {
                   <h3 className="mt-4 text-2xl font-extrabold sm:text-3xl">
                     Welcome to your control center.
                   </h3>
-                  <p className="mt-2 text-sm leading-6 text-purple-100">
+                  <p className="mt-2 text-sm leading-6 text-white">
                     Track your business performance and manage your store operations.
                   </p>
                   <button
@@ -630,7 +657,6 @@ export default function AdminDashboardPro() {
               <StatCard title="Low Stock Products" value={analytics.lowStock.length} subtitle="Stock of 5 or fewer" icon={AlertTriangle} color="purple" />
             </div>
 
-            {/* Daily Sales Chart */}
             <div className="mt-7 grid grid-cols-1 gap-6 xl:grid-cols-2">
               <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
                 <div className="mb-6 flex items-center justify-between">
@@ -638,12 +664,14 @@ export default function AdminDashboardPro() {
                     <h3 className="font-bold text-slate-900">Daily Sales</h3>
                     <p className="mt-1 text-xs text-slate-500">Last 7 days · Based on order totals</p>
                   </div>
-                  <div className="rounded-xl bg-lime-100 p-2 text-lime-800"><TrendingUp size={19} /></div>
+                  <div className="rounded-xl bg-lime-100 p-2 text-lime-800">
+                    <TrendingUp size={19} />
+                  </div>
                 </div>
                 <div className="flex h-48 items-end gap-3">
                   {analytics.lastSevenDays.map((day, index) => (
                     <div key={`${day.label}-${index}`} className="flex h-full flex-1 flex-col items-center justify-end gap-2">
-                      <span className="text-[10px] font-semibold text-slate-500">
+                      <span className="text-[10px] font-semibold text-slate-600">
                         {day.total ? `${Math.round(day.total / 1000)}k` : '0'}
                       </span>
                       <div className="flex h-36 w-full items-end overflow-hidden rounded-t-lg bg-purple-50">
@@ -652,27 +680,28 @@ export default function AdminDashboardPro() {
                           style={{ height: `${Math.max((day.total / analytics.maxDaily) * 100, day.total ? 5 : 0)}%` }}
                         />
                       </div>
-                      <span className="text-xs font-medium text-slate-500">{day.label}</span>
+                      <span className="text-xs font-medium text-slate-600">{day.label}</span>
                     </div>
                   ))}
                 </div>
               </section>
 
-              {/* Monthly Sales */}
               <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
                 <div className="mb-6 flex items-center justify-between">
                   <div>
                     <h3 className="font-bold text-slate-900">Monthly Sales</h3>
                     <p className="mt-1 text-xs text-slate-500">Last 6 months</p>
                   </div>
-                  <div className="rounded-xl bg-purple-100 p-2 text-purple-800"><BarChart3 size={19} /></div>
+                  <div className="rounded-xl bg-purple-100 p-2 text-purple-800">
+                    <BarChart3 size={19} />
+                  </div>
                 </div>
                 <div className="space-y-4">
                   {analytics.monthly.map((month, index) => (
                     <div key={`${month.label}-${index}`}>
                       <div className="mb-1.5 flex justify-between text-xs">
-                        <span className="font-semibold text-slate-600">{month.label}</span>
-                        <span className="font-bold text-slate-800">{money(month.total)}</span>
+                        <span className="font-semibold text-slate-700">{month.label}</span>
+                        <span className="font-bold text-slate-900">{money(month.total)}</span>
                       </div>
                       <div className="h-3 overflow-hidden rounded-full bg-slate-100">
                         <div
@@ -686,7 +715,6 @@ export default function AdminDashboardPro() {
               </section>
             </div>
 
-            {/* Order Status and Low Stock */}
             <div className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-2">
               <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
                 <h3 className="font-bold text-slate-900">Order Status Breakdown</h3>
@@ -694,14 +722,14 @@ export default function AdminDashboardPro() {
                 <div className="space-y-3">
                   {analytics.statusCounts.map(item => (
                     <div key={item.status} className="flex items-center gap-3">
-                      <span className="w-24 text-xs capitalize text-slate-600">{item.status}</span>
+                      <span className="w-24 text-xs capitalize text-slate-700">{item.status}</span>
                       <div className="h-2.5 flex-1 overflow-hidden rounded-full bg-slate-100">
                         <div
                           className="h-full rounded-full bg-purple-700"
                           style={{ width: `${orders.length ? (item.count / orders.length) * 100 : 0}%` }}
                         />
                       </div>
-                      <span className="w-7 text-right text-xs font-bold text-slate-700">{item.count}</span>
+                      <span className="w-7 text-right text-xs font-bold text-slate-800">{item.count}</span>
                     </div>
                   ))}
                 </div>
@@ -719,7 +747,7 @@ export default function AdminDashboardPro() {
                   <div className="space-y-3">
                     {analytics.lowStock.slice(0, 5).map(product => (
                       <div key={product.id} className="flex items-center justify-between gap-3 rounded-xl bg-orange-50 p-3">
-                        <span className="truncate text-sm font-semibold text-slate-700">{product.name}</span>
+                        <span className="truncate text-sm font-semibold text-slate-800">{product.name}</span>
                         <span className="shrink-0 rounded-lg bg-orange-100 px-2.5 py-1 text-xs font-bold text-orange-800">
                           {product.stock} left
                         </span>
@@ -727,14 +755,13 @@ export default function AdminDashboardPro() {
                     ))}
                   </div>
                 ) : (
-                  <p className="rounded-xl bg-lime-50 p-4 text-sm text-lime-800">
+                  <p className="rounded-xl bg-lime-50 p-4 text-sm text-green-800">
                     All products have more than 5 items in stock.
                   </p>
                 )}
               </section>
             </div>
 
-            {/* Recent Orders */}
             <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
               <div className="mb-4 flex items-center justify-between">
                 <div>
@@ -747,7 +774,7 @@ export default function AdminDashboardPro() {
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[550px] text-left text-sm">
-                  <thead className="border-b border-slate-100 text-xs text-slate-400">
+                  <thead className="border-b border-slate-100 text-xs text-slate-500">
                     <tr>
                       <th className="pb-3">Order ID</th>
                       <th className="pb-3">Date</th>
@@ -758,8 +785,12 @@ export default function AdminDashboardPro() {
                   <tbody>
                     {orders.slice(0, 5).map(order => (
                       <tr key={order.id} className="border-b border-slate-50">
-                        <td className="py-3 font-semibold text-slate-700">{order.order_number || order.id.slice(0, 8)}</td>
-                        <td className="py-3 text-slate-500">{order.created_at ? new Date(order.created_at).toLocaleDateString() : '—'}</td>
+                        <td className="py-3 font-semibold text-slate-800">
+                          {order.order_number || order.id.slice(0, 8)}
+                        </td>
+                        <td className="py-3 text-slate-600">
+                          {order.created_at ? new Date(order.created_at).toLocaleDateString() : '—'}
+                        </td>
                         <td className="py-3 font-semibold">{money(order.total_amount)}</td>
                         <td className="py-3"><StatusBadge value={order.order_status} /></td>
                       </tr>
@@ -787,15 +818,15 @@ export default function AdminDashboardPro() {
             <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
               <div className="relative min-w-[220px] flex-1">
                 <Search className="absolute left-3 top-3 text-slate-400" size={17} />
-                <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search products..." className="w-full rounded-xl border border-slate-200 py-2.5 pl-10 pr-3 text-sm outline-none focus:border-purple-500" />
+                <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search products..." className="w-full rounded-xl border border-slate-200 py-2.5 pl-10 pr-3 text-sm text-slate-900 outline-none focus:border-purple-500" />
               </div>
-              <button onClick={() => exportCSV(products, 'waseemtech-products.csv')} className="flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold hover:bg-slate-50">
+              <button onClick={() => exportCSV(products, 'lapmob-products.csv')} className="flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold">
                 <Download size={16} /> Export CSV
               </button>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full min-w-[700px] text-left text-sm">
-                <thead className="border-b border-slate-100 text-xs text-slate-400">
+                <thead className="border-b border-slate-100 text-xs text-slate-500">
                   <tr><th className="pb-3">Product</th><th className="pb-3">Price</th><th className="pb-3">Stock</th><th className="pb-3">Status</th><th className="pb-3">Actions</th></tr>
                 </thead>
                 <tbody>
@@ -803,22 +834,34 @@ export default function AdminDashboardPro() {
                     <tr key={product.id} className="border-b border-slate-50">
                       <td className="py-3">
                         <div className="flex items-center gap-3">
-                          {product.image_url ? <img src={product.image_url} alt={product.name} className="h-11 w-11 rounded-xl object-cover" /> : <div className="grid h-11 w-11 place-items-center rounded-xl bg-purple-50 text-purple-700"><Package size={19} /></div>}
+                          {product.image_url
+                            ? <img src={product.image_url} alt={product.name} className="h-11 w-11 rounded-xl object-cover" />
+                            : <div className="grid h-11 w-11 place-items-center rounded-xl bg-purple-50 text-purple-700"><Package size={19} /></div>}
                           <div>
-                            <p className="font-semibold text-slate-800">{product.name}</p>
-                            {product.is_featured && <span className="inline-flex items-center gap-1 text-[10px] font-bold text-lime-700"><Star size={10} /> Featured</span>}
+                            <p className="font-semibold text-slate-900">{product.name}</p>
+                            {product.is_featured && (
+                              <span className="inline-flex items-center gap-1 text-[10px] font-bold text-lime-700">
+                                <Star size={10} /> Featured
+                              </span>
+                            )}
                           </div>
                         </div>
                       </td>
                       <td className="font-semibold">{money(product.price)}</td>
                       <td>
-                        <span className={Number(product.stock) <= 5 ? 'font-bold text-orange-600' : 'text-slate-600'}>{product.stock}</span>
+                        <span className={Number(product.stock) <= 5 ? 'font-bold text-orange-600' : 'text-slate-700'}>
+                          {product.stock}
+                        </span>
                       </td>
                       <td><StatusBadge value={product.is_active ? 'approved' : 'rejected'} /></td>
                       <td>
                         <div className="flex gap-3">
-                          <button onClick={() => openEditForm(product)} className="text-purple-700 hover:text-purple-950" aria-label="Edit product"><Edit size={17} /></button>
-                          <button onClick={() => deleteProduct(product.id)} className="text-red-500 hover:text-red-700" aria-label="Delete product"><Trash2 size={17} /></button>
+                          <button onClick={() => openEditForm(product)} className="text-purple-700 hover:text-purple-950" aria-label="Edit product">
+                            <Edit size={17} />
+                          </button>
+                          <button onClick={() => deleteProduct(product.id)} className="text-red-500 hover:text-red-700" aria-label="Delete product">
+                            <Trash2 size={17} />
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -836,17 +879,26 @@ export default function AdminDashboardPro() {
             <SectionHeading
               title={`Categories (${categories.length})`}
               description="Organize products into store categories."
-              action={<button onClick={addCategory} className="flex items-center gap-2 rounded-xl bg-purple-800 px-4 py-2.5 text-sm font-bold text-white hover:bg-purple-700"><Plus size={17} /> Add Category</button>}
+              action={
+                <button onClick={addCategory} className="flex items-center gap-2 rounded-xl bg-purple-800 px-4 py-2.5 text-sm font-bold text-white hover:bg-purple-700">
+                  <Plus size={17} /> Add Category
+                </button>
+              }
             />
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
               {categories.map(category => {
-                const count = products.filter(product => product.category_id === category.id).length
+                const count = products.filter(
+                  product => product.category_id === category.id
+                ).length
+
                 return (
                   <div key={category.id} className="flex items-center gap-4 rounded-2xl border border-slate-100 bg-slate-50 p-5">
-                    <div className="rounded-xl bg-purple-100 p-3 text-purple-800"><Tags size={22} /></div>
+                    <div className="rounded-xl bg-purple-100 p-3 text-purple-800">
+                      <Tags size={22} />
+                    </div>
                     <div>
-                      <h3 className="font-bold text-slate-800">{category.name}</h3>
-                      <p className="mt-1 text-xs text-slate-500">{count} products</p>
+                      <h3 className="font-bold text-slate-900">{category.name}</h3>
+                      <p className="mt-1 text-xs text-slate-600">{count} products</p>
                     </div>
                   </div>
                 )
@@ -859,30 +911,40 @@ export default function AdminDashboardPro() {
         {/* Orders */}
         {tab === 'orders' && (
           <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <SectionHeading title="Customer Orders" description="Search orders and update their fulfilment status." action={<button onClick={() => exportCSV(orders, 'waseemtech-orders.csv')} className="flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold"><Download size={16} /> Export CSV</button>} />
+            <SectionHeading
+              title="Customer Orders"
+              description="Search orders and update their fulfilment status."
+              action={
+                <button onClick={() => exportCSV(orders, 'lapmob-orders.csv')} className="flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold">
+                  <Download size={16} /> Export CSV
+                </button>
+              }
+            />
             <div className="mb-5 flex flex-wrap gap-3">
               <div className="relative min-w-[200px] flex-1">
                 <Search className="absolute left-3 top-3 text-slate-400" size={17} />
-                <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search order number..." className="w-full rounded-xl border border-slate-200 py-2.5 pl-10 pr-3 text-sm outline-none focus:border-purple-500" />
+                <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search order number..." className="w-full rounded-xl border border-slate-200 py-2.5 pl-10 pr-3 text-sm text-slate-900 outline-none focus:border-purple-500" />
               </div>
-              <select value={orderFilter} onChange={e => setOrderFilter(e.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm">
+              <select value={orderFilter} onChange={e => setOrderFilter(e.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900">
                 <option value="all">All statuses</option>
                 {orderStatuses.map(status => <option key={status} value={status}>{status}</option>)}
               </select>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full min-w-[760px] text-left text-sm">
-                <thead className="border-b border-slate-100 text-xs text-slate-400"><tr><th className="pb-3">Order</th><th className="pb-3">Date</th><th className="pb-3">Amount</th><th className="pb-3">Payment</th><th className="pb-3">Order Status</th><th className="pb-3">Update</th></tr></thead>
+                <thead className="border-b border-slate-100 text-xs text-slate-500">
+                  <tr><th className="pb-3">Order</th><th className="pb-3">Date</th><th className="pb-3">Amount</th><th className="pb-3">Payment</th><th className="pb-3">Order Status</th><th className="pb-3">Update</th></tr>
+                </thead>
                 <tbody>
                   {filteredOrders.map(order => (
                     <tr key={order.id} className="border-b border-slate-50">
                       <td className="py-3 font-semibold">{order.order_number || order.id.slice(0, 8)}</td>
-                      <td className="text-slate-500">{order.created_at ? new Date(order.created_at).toLocaleDateString() : '—'}</td>
+                      <td className="text-slate-600">{order.created_at ? new Date(order.created_at).toLocaleDateString() : '—'}</td>
                       <td className="font-semibold">{money(order.total_amount)}</td>
                       <td><StatusBadge value={order.payment_status} /></td>
                       <td><StatusBadge value={order.order_status} /></td>
                       <td>
-                        <select value={order.order_status || 'pending'} onChange={e => updateOrderStatus(order.id, e.target.value)} className="rounded-lg border border-slate-200 bg-white p-2 text-xs">
+                        <select value={order.order_status || 'pending'} onChange={e => updateOrderStatus(order.id, e.target.value)} className="rounded-lg border border-slate-200 bg-white p-2 text-xs text-slate-900">
                           {orderStatuses.map(status => <option key={status} value={status}>{status}</option>)}
                         </select>
                       </td>
@@ -898,13 +960,21 @@ export default function AdminDashboardPro() {
         {/* Payments */}
         {tab === 'payments' && (
           <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <SectionHeading title="Payment Reviews" description="Review customer payment submissions." action={<button onClick={() => exportCSV(payments, 'waseemtech-payments.csv')} className="flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold"><Download size={16} /> Export CSV</button>} />
+            <SectionHeading
+              title="Payment Reviews"
+              description="Review customer payment submissions."
+              action={
+                <button onClick={() => exportCSV(payments, 'lapmob-payments.csv')} className="flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold">
+                  <Download size={16} /> Export CSV
+                </button>
+              }
+            />
             <div className="mb-5 flex flex-wrap gap-3">
               <div className="relative min-w-[200px] flex-1">
                 <Search className="absolute left-3 top-3 text-slate-400" size={17} />
-                <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search transaction..." className="w-full rounded-xl border border-slate-200 py-2.5 pl-10 pr-3 text-sm outline-none focus:border-purple-500" />
+                <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search transaction..." className="w-full rounded-xl border border-slate-200 py-2.5 pl-10 pr-3 text-sm text-slate-900 outline-none focus:border-purple-500" />
               </div>
-              <select value={paymentFilter} onChange={e => setPaymentFilter(e.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm">
+              <select value={paymentFilter} onChange={e => setPaymentFilter(e.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900">
                 <option value="all">All payments</option>
                 <option value="pending">Pending</option>
                 <option value="approved">Approved</option>
@@ -913,7 +983,9 @@ export default function AdminDashboardPro() {
             </div>
             <div className="overflow-x-auto">
               <table className="w-full min-w-[700px] text-left text-sm">
-                <thead className="border-b border-slate-100 text-xs text-slate-400"><tr><th className="pb-3">Transaction</th><th className="pb-3">Method</th><th className="pb-3">Amount</th><th className="pb-3">Status</th><th className="pb-3">Review Actions</th></tr></thead>
+                <thead className="border-b border-slate-100 text-xs text-slate-500">
+                  <tr><th className="pb-3">Transaction</th><th className="pb-3">Method</th><th className="pb-3">Amount</th><th className="pb-3">Status</th><th className="pb-3">Review Actions</th></tr>
+                </thead>
                 <tbody>
                   {filteredPayments.map(payment => (
                     <tr key={payment.id} className="border-b border-slate-50">
@@ -924,10 +996,14 @@ export default function AdminDashboardPro() {
                       <td>
                         {payment.status === 'pending' ? (
                           <div className="flex gap-2">
-                            <button onClick={() => updatePaymentStatus(payment.id, 'approved')} className="rounded-lg bg-lime-100 px-3 py-1.5 text-xs font-bold text-lime-800 hover:bg-lime-200">Approve</button>
-                            <button onClick={() => updatePaymentStatus(payment.id, 'rejected')} className="rounded-lg bg-red-100 px-3 py-1.5 text-xs font-bold text-red-700 hover:bg-red-200">Reject</button>
+                            <button onClick={() => updatePaymentStatus(payment.id, 'approved')} className="rounded-lg bg-lime-100 px-3 py-1.5 text-xs font-bold text-green-800 hover:bg-lime-200">
+                              Approve
+                            </button>
+                            <button onClick={() => updatePaymentStatus(payment.id, 'rejected')} className="rounded-lg bg-red-100 px-3 py-1.5 text-xs font-bold text-red-700 hover:bg-red-200">
+                              Reject
+                            </button>
                           </div>
-                        ) : <span className="text-xs text-slate-400">Reviewed</span>}
+                        ) : <span className="text-xs text-slate-500">Reviewed</span>}
                       </td>
                     </tr>
                   ))}
@@ -941,14 +1017,24 @@ export default function AdminDashboardPro() {
         {/* Customers */}
         {tab === 'customers' && (
           <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <SectionHeading title={`Registered Customers (${customers.length})`} description="Search your registered customer directory." action={<button onClick={() => exportCSV(customers, 'waseemtech-customers.csv')} className="flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold"><Download size={16} /> Export CSV</button>} />
+            <SectionHeading
+              title={`Registered Customers (${customers.length})`}
+              description="Search your registered customer directory."
+              action={
+                <button onClick={() => exportCSV(customers, 'lapmob-customers.csv')} className="flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold">
+                  <Download size={16} /> Export CSV
+                </button>
+              }
+            />
             <div className="relative mb-5">
               <Search className="absolute left-3 top-3 text-slate-400" size={17} />
-              <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search name, email or phone..." className="w-full rounded-xl border border-slate-200 py-2.5 pl-10 pr-3 text-sm outline-none focus:border-purple-500" />
+              <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search name, email or phone..." className="w-full rounded-xl border border-slate-200 py-2.5 pl-10 pr-3 text-sm text-slate-900 outline-none focus:border-purple-500" />
             </div>
             <div className="overflow-x-auto">
               <table className="w-full min-w-[600px] text-left text-sm">
-                <thead className="border-b border-slate-100 text-xs text-slate-400"><tr><th className="pb-3">Customer</th><th className="pb-3">Email</th><th className="pb-3">Phone</th><th className="pb-3">City</th></tr></thead>
+                <thead className="border-b border-slate-100 text-xs text-slate-500">
+                  <tr><th className="pb-3">Customer</th><th className="pb-3">Email</th><th className="pb-3">Phone</th><th className="pb-3">City</th></tr>
+                </thead>
                 <tbody>
                   {filteredCustomers.map(customer => (
                     <tr key={customer.id} className="border-b border-slate-50">
@@ -965,8 +1051,8 @@ export default function AdminDashboardPro() {
           </section>
         )}
 
-        <footer className="mt-9 border-t border-slate-200 pt-5 text-center text-xs text-slate-400">
-          WaseemTech Accessories · Admin Dashboard
+        <footer className="mt-9 border-t border-slate-200 pt-5 text-center text-xs text-slate-500">
+          LapMob Accessories · Admin Dashboard
         </footer>
       </main>
 
@@ -976,63 +1062,73 @@ export default function AdminDashboardPro() {
           <form onSubmit={saveProduct} className="my-8 w-full max-w-2xl space-y-4 rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl sm:p-8">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-xs font-bold uppercase tracking-widest text-lime-700">Product Management</p>
-                <h3 className="mt-1 text-2xl font-extrabold text-purple-950">{editingId ? 'Edit Product' : 'Add New Product'}</h3>
+                <p className="text-xs font-bold uppercase tracking-widest text-lime-700">
+                  Product Management
+                </p>
+                <h3 className="mt-1 text-2xl font-extrabold text-purple-950">
+                  {editingId ? 'Edit Product' : 'Add New Product'}
+                </h3>
               </div>
-              <button type="button" onClick={() => setShowForm(false)} className="rounded-xl bg-slate-100 p-2 text-slate-600 hover:bg-slate-200"><X size={20} /></button>
+              <button type="button" onClick={() => setShowForm(false)} className="rounded-xl bg-slate-100 p-2 text-slate-700 hover:bg-slate-200">
+                <X size={20} />
+              </button>
             </div>
 
             <div>
-              <label className="mb-1.5 block text-xs font-bold text-slate-600">Product Name *</label>
-              <input required value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="Enter product name" className="w-full rounded-xl border border-slate-200 p-3 text-sm outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-100" />
+              <label className="mb-1.5 block text-xs font-bold text-slate-700">Product Name *</label>
+              <input required value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="Enter product name" className="w-full rounded-xl border border-slate-200 p-3 text-sm text-slate-900 outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-100" />
             </div>
 
             <div>
-              <label className="mb-1.5 block text-xs font-bold text-slate-600">Category</label>
-              <select value={form.category_id} onChange={e => setForm({ ...form, category_id: e.target.value })} className="w-full rounded-xl border border-slate-200 bg-white p-3 text-sm outline-none focus:border-purple-500">
+              <label className="mb-1.5 block text-xs font-bold text-slate-700">Category</label>
+              <select value={form.category_id} onChange={e => setForm({ ...form, category_id: e.target.value })} className="w-full rounded-xl border border-slate-200 bg-white p-3 text-sm text-slate-900 outline-none focus:border-purple-500">
                 <option value="">Select category (optional)</option>
-                {categories.map(category => <option key={category.id} value={category.id}>{category.name}</option>)}
+                {categories.map(category => (
+                  <option key={category.id} value={category.id}>{category.name}</option>
+                ))}
               </select>
             </div>
 
             <div>
-              <label className="mb-1.5 block text-xs font-bold text-slate-600">Description</label>
-              <textarea value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} placeholder="Write product description..." rows={3} className="w-full rounded-xl border border-slate-200 p-3 text-sm outline-none focus:border-purple-500" />
+              <label className="mb-1.5 block text-xs font-bold text-slate-700">Description</label>
+              <textarea value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} placeholder="Write product description..." rows={3} className="w-full rounded-xl border border-slate-200 p-3 text-sm text-slate-900 outline-none focus:border-purple-500" />
             </div>
 
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               <div>
-                <label className="mb-1.5 block text-xs font-bold text-slate-600">Price (Rs.) *</label>
-                <input required type="number" min="0" step="0.01" value={form.price} onChange={e => setForm({ ...form, price: e.target.value })} placeholder="Price" className="w-full min-w-0 rounded-xl border border-slate-200 p-3 text-sm outline-none focus:border-purple-500" />
+                <label className="mb-1.5 block text-xs font-bold text-slate-700">Price (Rs.) *</label>
+                <input required type="number" min="0" step="0.01" value={form.price} onChange={e => setForm({ ...form, price: e.target.value })} placeholder="Price" className="w-full min-w-0 rounded-xl border border-slate-200 p-3 text-sm text-slate-900 outline-none focus:border-purple-500" />
               </div>
               <div>
-                <label className="mb-1.5 block text-xs font-bold text-slate-600">Old Price</label>
-                <input type="number" min="0" step="0.01" value={form.old_price} onChange={e => setForm({ ...form, old_price: e.target.value })} placeholder="Old price" className="w-full min-w-0 rounded-xl border border-slate-200 p-3 text-sm outline-none focus:border-purple-500" />
+                <label className="mb-1.5 block text-xs font-bold text-slate-700">Old Price</label>
+                <input type="number" min="0" step="0.01" value={form.old_price} onChange={e => setForm({ ...form, old_price: e.target.value })} placeholder="Old price" className="w-full min-w-0 rounded-xl border border-slate-200 p-3 text-sm text-slate-900 outline-none focus:border-purple-500" />
               </div>
               <div>
-                <label className="mb-1.5 block text-xs font-bold text-slate-600">Stock *</label>
-                <input required type="number" min="0" value={form.stock} onChange={e => setForm({ ...form, stock: e.target.value })} placeholder="Quantity" className="w-full min-w-0 rounded-xl border border-slate-200 p-3 text-sm outline-none focus:border-purple-500" />
+                <label className="mb-1.5 block text-xs font-bold text-slate-700">Stock *</label>
+                <input required type="number" min="0" value={form.stock} onChange={e => setForm({ ...form, stock: e.target.value })} placeholder="Quantity" className="w-full min-w-0 rounded-xl border border-slate-200 p-3 text-sm text-slate-900 outline-none focus:border-purple-500" />
               </div>
             </div>
 
             <div>
-              <label className="mb-1.5 block text-xs font-bold text-slate-600">Product Image URL</label>
-              <input value={form.image_url} onChange={e => setForm({ ...form, image_url: e.target.value })} placeholder="https://..." className="w-full rounded-xl border border-slate-200 p-3 text-sm outline-none focus:border-purple-500" />
+              <label className="mb-1.5 block text-xs font-bold text-slate-700">Product Image URL</label>
+              <input value={form.image_url} onChange={e => setForm({ ...form, image_url: e.target.value })} placeholder="https://..." className="w-full rounded-xl border border-slate-200 p-3 text-sm text-slate-900 outline-none focus:border-purple-500" />
             </div>
 
             <div className="flex flex-wrap gap-5 rounded-xl bg-slate-50 p-4">
-              <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
+              <label className="flex items-center gap-2 text-sm font-medium text-slate-800">
                 <input type="checkbox" checked={form.is_featured} onChange={e => setForm({ ...form, is_featured: e.target.checked })} className="h-4 w-4 accent-purple-800" />
                 Featured product
               </label>
-              <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
+              <label className="flex items-center gap-2 text-sm font-medium text-slate-800">
                 <input type="checkbox" checked={form.is_active} onChange={e => setForm({ ...form, is_active: e.target.checked })} className="h-4 w-4 accent-purple-800" />
                 Active in store
               </label>
             </div>
 
             <div className="flex flex-col-reverse gap-3 pt-2 sm:flex-row">
-              <button type="button" onClick={() => setShowForm(false)} className="flex-1 rounded-xl border border-slate-200 px-4 py-3 text-sm font-bold text-slate-600 hover:bg-slate-50">Cancel</button>
+              <button type="button" onClick={() => setShowForm(false)} className="flex-1 rounded-xl border border-slate-200 px-4 py-3 text-sm font-bold text-slate-700 hover:bg-slate-50">
+                Cancel
+              </button>
               <button type="submit" disabled={saving} className="flex-1 rounded-xl bg-purple-800 px-4 py-3 text-sm font-bold text-white hover:bg-purple-700 disabled:opacity-50">
                 {saving ? 'Saving...' : editingId ? 'Update Product' : 'Save Product'}
               </button>
