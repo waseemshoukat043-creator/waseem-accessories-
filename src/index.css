@@ -1,10 +1,9 @@
 
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
-
 @import "tailwindcss";
 
 /* =========================================
-   LAPMOB DESIGN SYSTEM
+   LAPMOB - PROFESSIONAL DESIGN SYSTEM
 ========================================= */
 
 :root {
@@ -18,7 +17,7 @@
   --white: #FFFFFF;
   --dark-text: #24212B;
 
-  /* UI Colors */
+  /* Theme Colors */
   --primary: #5B3A8E;
   --primary-hover: #452B70;
   --primary-light: #EDE5F7;
@@ -30,11 +29,12 @@
   --text: #24212B;
   --muted: #6B6573;
 
+  /* Status Colors */
   --success: #347A43;
   --danger: #DC2626;
   --warning: #B7791F;
 
-  /* Layout */
+  /* Border Radius */
   --radius-sm: 8px;
   --radius-md: 12px;
   --radius-lg: 18px;
@@ -47,7 +47,7 @@
 }
 
 /* =========================================
-   RESET & GLOBAL STYLES
+   RESET
 ========================================= */
 
 * {
@@ -152,7 +152,7 @@ p {
 }
 
 /* =========================================
-   BRAND BACKGROUND UTILITIES
+   BRAND BACKGROUNDS
 ========================================= */
 
 .bg-primary {
@@ -176,21 +176,26 @@ p {
 }
 
 .bg-white {
-  background-color: var(--white);
+  background-color: var(--white) !important;
+  color: var(--dark-text) !important;
 }
 
 .bg-surface {
-  background-color: var(--surface);
+  background-color: var(--surface) !important;
+  color: var(--dark-text);
 }
 
-/* Purple backgrounds: white foreground */
+/* =========================================
+   TAILWIND PURPLE BACKGROUND CONTRAST
+========================================= */
+
 .bg-purple-600,
 .bg-purple-700,
 .bg-purple-800,
 .bg-violet-600,
 .bg-violet-700,
 .bg-violet-800 {
-  color: var(--white);
+  color: var(--white) !important;
 }
 
 /* =========================================
@@ -213,14 +218,13 @@ p {
 
   font-weight: 600;
   cursor: pointer;
-
-  transition: all 0.2s ease;
 }
 
 .btn-primary:hover {
   background: var(--purple-dark);
   border-color: var(--purple-dark);
   color: var(--white) !important;
+
   transform: translateY(-1px);
   box-shadow: var(--shadow-md);
 }
@@ -271,7 +275,7 @@ p {
 }
 
 /* =========================================
-   FORMS & INPUTS
+   FORMS AND INPUTS
 ========================================= */
 
 input,
@@ -460,7 +464,7 @@ tbody tr:hover {
 }
 
 /* =========================================
-   PRODUCT IMAGES
+   PRODUCT IMAGES AND CARDS
 ========================================= */
 
 .product-image {
@@ -473,10 +477,14 @@ tbody tr:hover {
 
 .product-card {
   background: var(--white);
+  color: var(--dark-text);
+
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
+
   overflow: hidden;
   box-shadow: var(--shadow-sm);
+
   transition: all 0.25s ease;
 }
 
@@ -486,11 +494,14 @@ tbody tr:hover {
 }
 
 /* =========================================
-   FOCUS ACCESSIBILITY
+   ACCESSIBILITY
 ========================================= */
 
 button:focus-visible,
-a:focus-visible {
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
   outline: 3px solid rgba(91, 58, 142, 0.35);
   outline-offset: 3px;
 }
