@@ -1,4 +1,3 @@
-
 import Cart from './pages/Cart'
 import Wishlist from './pages/Wishlist'
 import Checkout from './pages/Checkout'
@@ -70,9 +69,9 @@ const categories = [
   'Smart Gadgets'
 ]
 
+// Homepage
 function HomePage() {
   const [connection, setConnection] = useState('checking')
-  const [menuOpen, setMenuOpen] = useState(false)
 
   useEffect(() => {
     async function checkConnection() {
@@ -90,108 +89,80 @@ function HomePage() {
   }, [])
 
   return (
-    <div className="min-h-screen bg-white text-gray-900">
+    <div className="min-h-screen bg-[#09090b] text-white">
 
       {/* Supabase Status */}
-      <div className="flex justify-center items-center gap-2 bg-purple-50 border-b border-purple-100 px-4 py-3 text-sm text-gray-700">
+      <div className="flex justify-center items-center gap-2 bg-zinc-900 px-4 py-3 text-sm">
         {connection === 'checking' && (
           <>
-            <Database size={17} className="text-purple-600" />
+            <Database size={17} />
             Checking database connection...
           </>
         )}
 
         {connection === 'connected' && (
           <>
-            <CheckCircle size={17} className="text-green-600" />
+            <CheckCircle size={17} className="text-green-400" />
             Supabase Connected Successfully
           </>
         )}
 
         {connection === 'error' && (
           <>
-            <AlertCircle size={17} className="text-red-600" />
+            <AlertCircle size={17} className="text-red-400" />
             Supabase Connection Failed
           </>
         )}
       </div>
 
       {/* Top Bar */}
-      <div className="bg-purple-700 text-white text-center py-2 px-4 text-sm font-medium">
+      <div className="bg-blue-600 text-center py-2 text-sm">
         Free delivery on orders above Rs. 5,000
       </div>
 
       {/* Navbar */}
-      <nav className="sticky top-0 z-50 border-b border-gray-200 bg-white/95 backdrop-blur">
+      <nav className="sticky top-0 z-50 border-b border-zinc-800 bg-[#09090b]">
         <div className="mx-auto max-w-7xl px-6 py-5 flex items-center justify-between">
 
-          <Link to="/" className="text-2xl font-extrabold tracking-tight text-gray-900">
-            Lap<span className="text-purple-600">Mob.</span>
+          <Link to="/" className="text-2xl font-bold">
+            Waseem<span className="text-blue-500">Tech.</span>
           </Link>
 
-          <div className="hidden md:flex gap-8 text-sm font-medium text-gray-600">
-            <a href="#home" className="hover:text-purple-600 transition">Home</a>
-            <a href="#categories" className="hover:text-purple-600 transition">Categories</a>
-            <a href="#products" className="hover:text-purple-600 transition">Products</a>
-            <a href="#footer" className="hover:text-purple-600 transition">Contact</a>
+          <div className="hidden md:flex gap-8 text-sm text-zinc-300">
+            <a href="#home" className="hover:text-blue-400">Home</a>
+            <a href="#categories" className="hover:text-blue-400">Categories</a>
+            <a href="#products" className="hover:text-blue-400">Products</a>
+            <a href="#footer" className="hover:text-blue-400">Contact</a>
           </div>
 
           <div className="flex gap-4 items-center">
-            <button
-              aria-label="Search"
-              className="text-gray-700 hover:text-purple-600"
-            >
+            <button aria-label="Search">
               <Search size={21} />
             </button>
 
-            <Link
-              to="/wishlist"
-              aria-label="Wishlist"
-              className="text-gray-700 hover:text-purple-600"
-            >
-              <Heart size={21} />
-            </Link>
-
-            <Link
-              to="/cart"
-              aria-label="Shopping bag"
-              className="text-gray-700 hover:text-purple-600"
-            >
+            <Link to="/cart" aria-label="Shopping bag">
               <ShoppingBag size={21} />
             </Link>
 
             <Link
               to="/login"
-              className="hidden sm:block text-sm font-medium text-gray-700 hover:text-purple-600"
+              className="hidden sm:block text-sm text-zinc-300 hover:text-blue-400"
             >
               Login
             </Link>
 
             <Link
               to="/signup"
-              className="rounded-lg bg-purple-600 text-white px-4 py-2 text-sm font-semibold hover:bg-purple-700 transition"
+              className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold hover:bg-blue-700"
             >
               Sign Up
             </Link>
 
-            <button
-              className="md:hidden text-gray-800"
-              aria-label="Menu"
-              onClick={() => setMenuOpen(!menuOpen)}
-            >
+            <button className="md:hidden" aria-label="Menu">
               <Menu size={22} />
             </button>
           </div>
         </div>
-
-        {menuOpen && (
-          <div className="md:hidden border-t border-gray-200 bg-white px-6 py-4 flex flex-col gap-4 text-gray-700">
-            <a href="#home" onClick={() => setMenuOpen(false)}>Home</a>
-            <a href="#categories" onClick={() => setMenuOpen(false)}>Categories</a>
-            <a href="#products" onClick={() => setMenuOpen(false)}>Products</a>
-            <a href="#footer" onClick={() => setMenuOpen(false)}>Contact</a>
-          </div>
-        )}
       </nav>
 
       {/* Hero */}
@@ -200,23 +171,23 @@ function HomePage() {
         className="max-w-7xl mx-auto px-6 py-20 grid md:grid-cols-2 gap-12 items-center"
       >
         <div>
-          <p className="text-purple-600 uppercase tracking-[3px] font-bold text-sm">
+          <p className="text-blue-400 uppercase tracking-[3px] font-semibold text-sm">
             Technology made simple
           </p>
 
-          <h1 className="text-5xl md:text-6xl font-extrabold leading-tight mt-5 text-gray-900">
+          <h1 className="text-5xl md:text-6xl font-bold leading-tight mt-5">
             Upgrade Your
-            <span className="block text-purple-600">Tech Lifestyle.</span>
+            <span className="block text-blue-500">Tech Lifestyle.</span>
           </h1>
 
-          <p className="text-gray-600 leading-7 mt-6 max-w-lg">
+          <p className="text-zinc-400 leading-7 mt-6 max-w-lg">
             Discover premium mobile and laptop accessories
             designed to improve your everyday technology experience.
           </p>
 
           <Link
             to="/shop"
-            className="inline-flex items-center gap-3 bg-purple-600 text-white hover:bg-purple-700 px-7 py-4 rounded-lg mt-8 font-semibold transition shadow-lg shadow-purple-200"
+            className="inline-flex items-center gap-3 bg-blue-600 hover:bg-blue-700 px-7 py-4 rounded-lg mt-8 font-semibold"
           >
             Explore Products <ArrowRight size={19} />
           </Link>
@@ -225,12 +196,12 @@ function HomePage() {
         <img
           src="https://images.unsplash.com/photo-1498049794561-7780e7231661?w=1000"
           alt="Technology accessories"
-          className="w-full h-[350px] md:h-[450px] object-cover rounded-2xl border border-gray-200 shadow-xl"
+          className="w-full h-[350px] md:h-[450px] object-cover rounded-2xl border border-zinc-800"
         />
       </section>
 
       {/* Benefits */}
-      <section className="border-y border-gray-200 bg-gray-50">
+      <section className="border-y border-zinc-800 bg-zinc-900/60">
         <div className="max-w-7xl mx-auto px-6 py-10 grid sm:grid-cols-2 md:grid-cols-4 gap-8">
           {[
             { icon: Truck, title: 'Fast Delivery', desc: 'Reliable order delivery' },
@@ -242,13 +213,13 @@ function HomePage() {
 
             return (
               <div key={item.title} className="flex items-center gap-4">
-                <div className="p-3 bg-purple-100 text-purple-700 rounded-xl">
+                <div className="p-3 bg-blue-600/10 text-blue-400 rounded-lg">
                   <Icon size={25} />
                 </div>
 
                 <div>
-                  <h3 className="font-semibold text-gray-900">{item.title}</h3>
-                  <p className="text-sm text-gray-500 mt-1">{item.desc}</p>
+                  <h3 className="font-semibold">{item.title}</h3>
+                  <p className="text-sm text-zinc-500 mt-1">{item.desc}</p>
                 </div>
               </div>
             )
@@ -258,11 +229,11 @@ function HomePage() {
 
       {/* Categories */}
       <section id="categories" className="max-w-7xl mx-auto px-6 py-20">
-        <p className="text-purple-600 text-sm uppercase tracking-widest font-bold">
+        <p className="text-blue-400 text-sm uppercase tracking-widest font-semibold">
           Browse Collection
         </p>
 
-        <h2 className="text-3xl font-extrabold mt-3 mb-10 text-gray-900">
+        <h2 className="text-3xl font-bold mt-3 mb-10">
           Shop By Category
         </h2>
 
@@ -271,15 +242,15 @@ function HomePage() {
             <Link
               to="/shop"
               key={category}
-              className="p-7 rounded-xl border border-gray-200 bg-white hover:border-purple-400 hover:shadow-lg transition"
+              className="p-7 rounded-xl border border-zinc-800 bg-zinc-900 hover:border-blue-500 transition"
             >
-              <span className="text-3xl text-purple-600 font-extrabold">
+              <span className="text-3xl text-blue-500 font-bold">
                 0{index + 1}
               </span>
 
-              <h3 className="mt-5 font-semibold text-gray-900">{category}</h3>
+              <h3 className="mt-5 font-semibold">{category}</h3>
 
-              <p className="text-gray-500 text-sm mt-2">
+              <p className="text-zinc-500 text-sm mt-2">
                 Explore collection
               </p>
             </Link>
@@ -288,13 +259,13 @@ function HomePage() {
       </section>
 
       {/* Products */}
-      <section id="products" className="bg-gray-50 border-y border-gray-100 py-20">
+      <section id="products" className="bg-zinc-900/50 py-20">
         <div className="max-w-7xl mx-auto px-6">
-          <p className="text-purple-600 text-sm uppercase tracking-widest font-bold">
+          <p className="text-blue-400 text-sm uppercase tracking-widest font-semibold">
             Featured Collection
           </p>
 
-          <h2 className="text-3xl font-extrabold mt-3 mb-10 text-gray-900">
+          <h2 className="text-3xl font-bold mt-3 mb-10">
             Popular Products
           </h2>
 
@@ -302,7 +273,7 @@ function HomePage() {
             {products.map((product) => (
               <div
                 key={product.id}
-                className="bg-white border border-gray-200 rounded-xl overflow-hidden hover:shadow-xl transition"
+                className="bg-[#111114] border border-zinc-800 rounded-xl overflow-hidden"
               >
                 <div className="relative">
                   <img
@@ -313,34 +284,30 @@ function HomePage() {
 
                   <button
                     aria-label="Add to wishlist"
-                    className="absolute right-4 top-4 p-2 bg-white text-gray-700 rounded-full shadow hover:text-purple-600"
+                    className="absolute right-4 top-4 p-2 bg-black/70 rounded-full"
                   >
                     <Heart size={19} />
                   </button>
                 </div>
 
                 <div className="p-5">
-                  <p className="text-xs text-purple-600 font-semibold">
-                    {product.category}
-                  </p>
+                  <p className="text-xs text-blue-400">{product.category}</p>
 
-                  <h3 className="font-semibold mt-2 text-gray-900">
-                    {product.name}
-                  </h3>
+                  <h3 className="font-semibold mt-2">{product.name}</h3>
 
                   <div className="flex gap-3 items-center mt-4">
-                    <span className="font-bold text-lg text-gray-900">
+                    <span className="font-bold text-lg">
                       Rs. {product.price.toLocaleString()}
                     </span>
 
-                    <span className="text-gray-400 line-through text-sm">
+                    <span className="text-zinc-500 line-through text-sm">
                       Rs. {product.oldPrice.toLocaleString()}
                     </span>
                   </div>
 
                   <Link
                     to="/shop"
-                    className="block text-center w-full mt-5 py-3 rounded-lg bg-purple-600 text-white hover:bg-purple-700 font-semibold transition"
+                    className="block text-center w-full mt-5 py-3 rounded-lg bg-blue-600 hover:bg-blue-700 font-semibold"
                   >
                     Shop Now
                   </Link>
@@ -352,20 +319,20 @@ function HomePage() {
       </section>
 
       {/* Footer */}
-      <footer id="footer" className="border-t border-gray-200 bg-white py-12 px-6">
+      <footer id="footer" className="border-t border-zinc-800 py-12 px-6">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between gap-6">
           <div>
-            <h2 className="text-2xl font-extrabold text-gray-900">
-              Lap<span className="text-purple-600">Mob.</span>
+            <h2 className="text-2xl font-bold">
+              Waseem<span className="text-blue-500">Tech.</span>
             </h2>
 
-            <p className="text-gray-500 text-sm mt-3">
+            <p className="text-zinc-500 text-sm mt-3">
               Your destination for quality tech accessories.
             </p>
           </div>
 
-          <p className="text-gray-500 text-sm">
-            © 2026 LapMob. All rights reserved.
+          <p className="text-zinc-500 text-sm">
+            © 2026 WaseemTech Accessories. All rights reserved.
           </p>
         </div>
       </footer>
@@ -384,6 +351,7 @@ function App() {
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/reset-password" element={<ResetPassword />} />
 
+        {/* New Professional Admin Dashboard */}
         <Route path="/admin" element={<AdminDashboardPro />} />
 
         <Route path="/shop" element={<Shop />} />
@@ -394,10 +362,10 @@ function App() {
         <Route
           path="*"
           element={
-            <div className="min-h-screen bg-gray-50 text-gray-900 flex flex-col items-center justify-center gap-4">
+            <div className="min-h-screen bg-zinc-950 text-white flex flex-col items-center justify-center gap-4">
               <h1 className="text-5xl font-bold">404</h1>
-              <p className="text-gray-600">Page not found</p>
-              <Link to="/" className="text-purple-600 hover:underline">
+              <p className="text-zinc-400">Page not found</p>
+              <Link to="/" className="text-blue-400 hover:underline">
                 Back to Home
               </Link>
             </div>
