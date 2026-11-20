@@ -9,6 +9,7 @@ import {
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { supabase } from '../lib/supabase'
+import { getWhatsAppApiBaseUrl } from '../lib/whatsappApi'
 import { logoutUser } from '../lib/auth'
 import Dropshipping from './Dropshipping'
 
@@ -501,9 +502,7 @@ export default function AdminDashboardPro() {
           return
         }
 
-        const apiUrl = (
-          import.meta.env.VITE_WHATSAPP_API_URL || 'http://localhost:5000'
-        ).replace(/\/+$/, '')
+        const apiUrl = getWhatsAppApiBaseUrl()
 
         const response = await fetch(`${apiUrl}/api/admin/order-status`, {
           method: 'POST',
