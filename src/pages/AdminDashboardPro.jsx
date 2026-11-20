@@ -1,10 +1,11 @@
+
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Package, Tags, ShoppingCart, CreditCard, Users,
   Plus, Trash2, Edit, LogOut, RefreshCw, X, Store, Search,
   TrendingUp, Wallet, AlertTriangle, Download, BarChart3,
-  Eye, Star, Menu, Truck
+  Eye, Star, Menu, Truck, MessageCircle
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { supabase } from '../lib/supabase'
@@ -21,7 +22,8 @@ const navItems = [
   { id: 'orders', label: 'Orders', icon: ShoppingCart },
   { id: 'payments', label: 'Payments', icon: CreditCard },
   { id: 'customers', label: 'Customers', icon: Users },
-  { id: 'dropshipping', label: 'Dropshipping', icon: Truck }
+  { id: 'dropshipping', label: 'Dropshipping', icon: Truck },
+  { id: 'whatsapp', label: 'WhatsApp Agent', icon: MessageCircle }
 ]
 
 const orderStatuses = [
@@ -96,6 +98,88 @@ function StatusBadge({ value }) {
     <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold capitalize ${styles[status] || 'bg-slate-100 text-slate-700'}`}>
       {status}
     </span>
+  )
+}
+
+function WhatsAppAgentLogs() {
+  const [messages, setMessages] = useState([])
+  const [loadingLogs, setLoadingLogs] = useState(true)
+  const [error, setError] = useState('')
+
+  async function loadMessages() {
+    setLoadingLogs(true)
+    setError('')
+
+    const { data, error: queryError } = await supabase
+      .from('whatsapp_messages')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(100)
+
+    if (queryError) setError(queryError.message)
+    else setMessages(data || [])
+
+    setLoadingLogs(false)
+  }
+
+  useEffect(() => {
+    loadMessages()
+  }, [])
+
+  return (
+    <section className="rounded-2xl border border-purple-100 bg-white p-5 shadow-sm sm:p-6">
+      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h3 className="text-lg font-extrabold text-purple-950">Customer WhatsApp Messages</h3>
+          <p className="mt-1 text-sm text-slate-500">
+            Latest 100 inbound and outbound messages received by LapMob.
+          </p>
+        </div>
+        <button
+          onClick={loadMessages}
+          className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold hover:border-purple-300"
+        >
+          Refresh
+        </button>
+      </div>
+
+      {loadingLogs ? (
+        <p className="py-8 text-center text-sm text-slate-500">Loading messages...</p>
+      ) : error ? (
+        <p className="rounded-xl bg-amber-50 p-4 text-sm text-amber-800">
+          {error}. Run supabase/whatsapp_agent.sql in Supabase SQL Editor, then refresh.
+        </p>
+      ) : !messages.length ? (
+        <p className="py-8 text-center text-sm text-slate-500">
+          No WhatsApp messages yet. Once webhook is connected, customer chats will appear here.
+        </p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[650px] text-left text-sm">
+            <thead>
+              <tr className="border-b text-xs uppercase text-slate-500">
+                <th className="p-3">Phone</th>
+                <th className="p-3">Direction</th>
+                <th className="p-3">Message</th>
+                <th className="p-3">Time</th>
+              </tr>
+            </thead>
+            <tbody>
+              {messages.map(item => (
+                <tr key={item.id} className="border-b border-slate-100">
+                  <td className="p-3 font-semibold">{item.phone}</td>
+                  <td className="p-3 capitalize">{item.direction}</td>
+                  <td className="max-w-md whitespace-pre-wrap p-3">{item.message}</td>
+                  <td className="p-3 text-xs text-slate-500">
+                    {new Date(item.created_at).toLocaleString()}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
   )
 }
 
@@ -405,6 +489,49 @@ export default function AdminDashboardPro() {
   }
 
   async function updateOrderStatus(id, status) {
+    if (status === 'confirmed' || status === 'cancelled') {
+      try {
+        const {
+          data: { session },
+          error: sessionError,
+        } = await supabase.auth.getSession()
+
+        if (sessionError || !session?.access_token) {
+          toast.error('Please login again')
+          return
+        }
+
+        const apiUrl = (
+          import.meta.env.VITE_WHATSAPP_API_URL || 'http://localhost:5000'
+        ).replace(/\/+$/, '')
+
+        const response = await fetch(`${apiUrl}/api/admin/order-status`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({
+            order_id: id,
+            status,
+          }),
+        })
+
+        const data = await response.json()
+
+        if (!response.ok) {
+          toast.error(data.error || 'Order status update failed')
+          return
+        }
+
+        toast.success(data.message || `Order ${status}`)
+        await loadData()
+      } catch (error) {
+        toast.error(error.message || 'Could not update order status')
+      }
+      return
+    }
+
     const { error } = await supabase
       .from('orders')
       .update({ order_status: status })
@@ -415,9 +542,10 @@ export default function AdminDashboardPro() {
       return
     }
 
-    toast.success('Order status updated')
+    toast.success(`Order ${status}`)
     await loadData()
   }
+
 
   async function updatePaymentStatus(id, status) {
     const { error } = await supabase
@@ -495,7 +623,8 @@ export default function AdminDashboardPro() {
     orders: 'Order Management',
     payments: 'Payment Management',
     customers: 'Customer Directory',
-    dropshipping: 'Dropshipping Management'
+    dropshipping: 'Dropshipping Management',
+    whatsapp: 'WhatsApp Order Agent'
   }
 
   return (
@@ -615,6 +744,7 @@ export default function AdminDashboardPro() {
 
         {/* Dropshipping */}
         {tab === 'dropshipping' && <Dropshipping />}
+        {tab === 'whatsapp' && <WhatsAppAgentLogs />}
 
         {/* Overview */}
         {tab === 'overview' && (
@@ -944,8 +1074,14 @@ export default function AdminDashboardPro() {
                       <td><StatusBadge value={order.payment_status} /></td>
                       <td><StatusBadge value={order.order_status} /></td>
                       <td>
-                        <select value={order.order_status || 'pending'} onChange={e => updateOrderStatus(order.id, e.target.value)} className="rounded-lg border border-slate-200 bg-white p-2 text-xs text-slate-900">
-                          {orderStatuses.map(status => <option key={status} value={status}>{status}</option>)}
+                        <select
+                          value={order.order_status || 'pending'}
+                          onChange={e => updateOrderStatus(order.id, e.target.value)}
+                          className="rounded-lg border border-slate-200 bg-white p-2 text-xs text-slate-900"
+                        >
+                          {orderStatuses.map(status => (
+                            <option key={status} value={status}>{status}</option>
+                          ))}
                         </select>
                       </td>
                     </tr>
