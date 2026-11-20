@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { getWhatsAppApiBaseUrl } from '../lib/whatsappApi'
 import toast from 'react-hot-toast'
 
 const PAYMENT_METHODS = [
@@ -188,10 +189,7 @@ export default function Checkout() {
           sessionData?.session?.access_token
 
         if (accessToken) {
-          const apiBase = (
-            import.meta.env.VITE_WHATSAPP_API_URL ||
-            'http://localhost:5000'
-          ).replace(/\/$/, '')
+          const apiBase = getWhatsAppApiBaseUrl()
 
           const response = await fetch(
             `${apiBase}/api/order-created`,
