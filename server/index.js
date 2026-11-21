@@ -1268,21 +1268,21 @@ async function handler(req, res) {
         return
       }
 
-      // Acknowledge Meta immediately.
-      sendJson(res, 200, {
-        ok: true,
-        received: true
-      })
-
-      // Process commands after acknowledging webhook.
-      setImmediate(() => {
-        handleIncomingWebhook(payload).catch(error => {
-          console.error(
-            'Webhook processing error:',
-            error
-          )
+            // Process incoming WhatsApp messages before responding.
+      try {
+        await handleIncomingWebhook(payload)
+        sendJson(res, 200, {
+          ok: true,
+          received: true,
+          processed: true
         })
-      })
+      } catch (error) {
+        console.error('Webhook processing error:', error)
+        sendJson(res, 500, {
+          ok: false,
+          error: 'Webhook processing failed'
+        })
+      }
 
       return
     }
