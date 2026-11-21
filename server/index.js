@@ -768,7 +768,7 @@ async function handleIncomingWebhook(payload) {
 // 8. MAIN SERVER
 // --------------------------------------------------
 
-const server = http.createServer(async (req, res) => {
+async function handler(req, res) {
   setCors(req, res)
 
   if (req.method === 'OPTIONS') {
@@ -1301,20 +1301,19 @@ const server = http.createServer(async (req, res) => {
       error: 'Internal server error'
     })
   }
-})
+}
 
-// --------------------------------------------------
-// 9. START SERVER
-// --------------------------------------------------
+export default handler
 
-server.listen(PORT, () => {
-  console.log(
-    `LapMob WhatsApp service listening on port ${PORT}; missing config: ${
-      missing.length ? missing.join(', ') : 'none'
-    }`
-  )
-})
+// Local development server only.
+if (!process.env.VERCEL) {
+  const server = http.createServer(handler)
 
-server.on('error', error => {
-  console.error('Server startup error:', error)
-})
+  server.listen(PORT, () => {
+    console.log(`LapMob WhatsApp service listening on port ${PORT}; missing config: ${missing.length ? missing.join(String.fromCharCode(44,32)) : String.fromCharCode(110,111,110,101)}`)
+  })
+
+  server.on(String.fromCharCode(101,114,114,111,114), error => {
+    console.error(`Server startup error: ${error}`)
+  })
+}
