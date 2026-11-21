@@ -1,3 +1,4 @@
+
 import { createClient } from '@supabase/supabase-js'
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
@@ -11,27 +12,27 @@ if (!supabaseUrl || !supabaseKey) {
 
 export const supabase = createClient(
   supabaseUrl,
-  supabaseKey
+  supabaseKey,
+  {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true
+    }
+  }
 )
 
-// Test Supabase connection
+// Test Supabase connection using the existing products table
 export async function testSupabaseConnection() {
   try {
-    const { data, error } = await supabase
-      .from('connection_test')
-      .select('*')
+    const { error } = await supabase
+      .from('products')
+      .select('id')
       .limit(1)
 
-    // Table not found means the API was reached,
-    // but the test table has not been created yet.
-    if (error && error.code === 'PGRST205') {
-      return {
-        connected: true,
-        message: 'Supabase API connected. Database test table not created yet.'
-      }
-    }
-
     if (error) {
+      console.error('Supabase connection error:', error.message)
+
       return {
         connected: false,
         message: error.message
@@ -43,6 +44,8 @@ export async function testSupabaseConnection() {
       message: 'Supabase connected successfully!'
     }
   } catch (error) {
+    console.error('Supabase connection failed:', error)
+
     return {
       connected: false,
       message: error.message
