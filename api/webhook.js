@@ -1,0 +1,1 @@
+import handler from '../server/index.js'; export const config = { api: { bodyParser: false } }; export default function webhook(req, res) { req.url = (req.url || '').replace(/^\/api\/webhook(?=\/|\?|$)/, '/webhook'); return handler(req, res); }
