@@ -728,6 +728,7 @@ async function handleAdminCommand(from, message) {
 // --------------------------------------------------
 
 async function handleIncomingWebhook(payload) {
+  console.log('WEBHOOK PROCESSING STARTED')
   const entries = payload?.entry || []
 
   for (const entry of entries) {
