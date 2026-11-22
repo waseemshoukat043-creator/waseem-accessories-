@@ -729,6 +729,7 @@ async function handleAdminCommand(from, message) {
 
 async function handleIncomingWebhook(payload) {
   console.log('WEBHOOK PROCESSING STARTED')
+  console.log('WEBHOOK EVENT SUMMARY:', JSON.stringify((payload?.entry || []).map(entry => ({ changes: (entry?.changes || []).map(change => ({ field: change?.field, hasMessages: Array.isArray(change?.value?.messages), messageCount: change?.value?.messages?.length || 0, hasStatuses: Array.isArray(change?.value?.statuses), statusCount: change?.value?.statuses?.length || 0 })) }))));
   const entries = payload?.entry || []
 
   for (const entry of entries) {
