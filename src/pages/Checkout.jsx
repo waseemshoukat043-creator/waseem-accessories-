@@ -25,6 +25,7 @@ export default function Checkout() {
   const [form, setForm] = useState({
     customer_name: '',
     customer_phone: '',
+    customer_email: '',
     shipping_address: '',
     shipping_city: '',
     notes: ''
@@ -119,6 +120,24 @@ export default function Checkout() {
       return
     }
 
+    const customerEmail = form.customer_email.trim()
+    const customerPhone = form.customer_phone.trim()
+    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    const phoneDigits = customerPhone.replace(/\D/g, '')
+
+    if (!emailPattern.test(customerEmail)) {
+      toast.error('Please enter a valid email address')
+      return
+    }
+
+    if (
+      phoneDigits.length < 10 ||
+      phoneDigits.length > 15
+    ) {
+      toast.error('Please enter a valid phone number')
+      return
+    }
+
     if (
       paymentMethod !== 'cod' &&
       !paymentProof
@@ -201,7 +220,8 @@ export default function Checkout() {
               },
               body: JSON.stringify({
                 order_id: order.order_id,
-                order_number: order.order_number
+                order_number: order.order_number,
+                customer_email: form.customer_email.trim()
               })
             }
           )
@@ -315,6 +335,16 @@ export default function Checkout() {
                   value={form.customer_phone}
                   onChange={handleChange}
                   placeholder="Phone Number"
+                  className="w-full rounded-xl border p-3 outline-none focus:border-[#5B3A8E]"
+                />
+
+                <input
+                  required
+                  type="email"
+                  name="customer_email"
+                  value={form.customer_email}
+                  onChange={handleChange}
+                  placeholder="Email Address"
                   className="w-full rounded-xl border p-3 outline-none focus:border-[#5B3A8E]"
                 />
 
