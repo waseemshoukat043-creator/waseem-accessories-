@@ -5,13 +5,14 @@ import {
   LayoutDashboard, Package, Tags, ShoppingCart, CreditCard, Users,
   Plus, Trash2, Edit, LogOut, RefreshCw, X, Store, Search,
   TrendingUp, Wallet, AlertTriangle, Download, BarChart3,
-  Eye, Star, Menu, Truck, MessageCircle
+  Eye, Star, Menu, Truck, MessageCircle, PackageCheck
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { supabase } from '../lib/supabase'
 import { getWhatsAppApiBaseUrl } from '../lib/whatsappApi'
 import { logoutUser } from '../lib/auth'
 import Dropshipping from './Dropshipping'
+import Shipping from './Shipping'
 
 const money = value =>
   `Rs. ${Number(value || 0).toLocaleString('en-PK')}`
@@ -24,6 +25,7 @@ const navItems = [
   { id: 'payments', label: 'Payments', icon: CreditCard },
   { id: 'customers', label: 'Customers', icon: Users },
   { id: 'dropshipping', label: 'Dropshipping', icon: Truck },
+  { id: 'shipping', label: 'Shipping', icon: PackageCheck },
   { id: 'whatsapp', label: 'WhatsApp Agent', icon: MessageCircle }
 ]
 
@@ -623,6 +625,7 @@ export default function AdminDashboardPro() {
     payments: 'Payment Management',
     customers: 'Customer Directory',
     dropshipping: 'Dropshipping Management',
+  shipping: 'Shipping Management',
     whatsapp: 'WhatsApp Order Agent'
   }
 
@@ -743,6 +746,7 @@ export default function AdminDashboardPro() {
 
         {/* Dropshipping */}
         {tab === 'dropshipping' && <Dropshipping />}
+{tab === 'shipping' && <Shipping />}
         {tab === 'whatsapp' && <WhatsAppAgentLogs />}
 
         {/* Overview */}
