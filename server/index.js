@@ -1,10 +1,13 @@
 
 import http from 'node:http'
+import { handleShippingRequest } from './shipping/routes.js'
+import { startShippingAgent } from './shipping/agent.js'
 import crypto from 'node:crypto'
 import { createClient } from '@supabase/supabase-js'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import nodemailer from 'nodemailer'
 
 // --------------------------------------------------
 // 1. LOAD ENVIRONMENT VARIABLES
@@ -65,6 +68,12 @@ const GRAPH_VERSION =
 const CLIENT_ORIGIN =
   process.env.CLIENT_ORIGIN || 'http://localhost:5173'
 
+const EMAIL_USER = process.env.EMAIL_USER || ''
+const EMAIL_APP_PASSWORD =
+  process.env.EMAIL_APP_PASSWORD || ''
+const EMAIL_FROM =
+  process.env.EMAIL_FROM || EMAIL_USER
+
 function cleanPhone(value) {
   let phone = String(value || '').replace(/\D/g, '')
 
@@ -86,23 +95,17 @@ const ADMIN_WHATSAPP_NUMBER = cleanPhone(
 const missing = []
 
 if (!SUPABASE_URL) missing.push('SUPABASE_URL')
-
 if (!SUPABASE_SERVICE_ROLE_KEY) {
   missing.push('SUPABASE_SERVICE_ROLE_KEY')
 }
-
 if (!WHATSAPP_TOKEN) missing.push('WHATSAPP_TOKEN')
-
 if (!WHATSAPP_PHONE_NUMBER_ID) {
   missing.push('WHATSAPP_PHONE_NUMBER_ID')
 }
-
 if (!META_VERIFY_TOKEN) missing.push('META_VERIFY_TOKEN')
-
 if (!ADMIN_WHATSAPP_NUMBER) {
   missing.push('ADMIN_WHATSAPP_NUMBER')
 }
-
 if (!META_APP_SECRET) missing.push('META_APP_SECRET')
 
 const supabase =
@@ -116,7 +119,7 @@ const supabase =
     : null
 
 // --------------------------------------------------
-// 2.1 WHATSAPP MESSAGE HISTORY
+// 3. WHATSAPP MESSAGE HISTORY
 // --------------------------------------------------
 
 async function saveWhatsAppMessage({
@@ -125,21 +128,11 @@ async function saveWhatsAppMessage({
   message,
   messageId = null
 }) {
-  if (!supabase) {
-    console.error(
-      'WhatsApp history: Supabase is not configured'
-    )
-    return
-  }
+  if (!supabase) return
 
   const normalizedPhone = cleanPhone(phone)
 
-  if (!normalizedPhone || !message) {
-    console.error(
-      'WhatsApp history: Invalid phone or empty message'
-    )
-    return
-  }
+  if (!normalizedPhone || !message) return
 
   try {
     const { error } = await supabase
@@ -152,26 +145,39 @@ async function saveWhatsAppMessage({
       })
 
     if (error) {
-      console.error(
-        'WhatsApp history save failed:',
-        error.message
-      )
-      return
+      console.error('WhatsApp history save failed:', error.message)
+    }
+  } catch (error) {
+    console.error('WhatsApp history error:', error.message)
+  }
+}
+
+// Check whether this WhatsApp message was already processed.
+// Requires the existing whatsapp_messages.wa_message_id column.
+async function wasMessageProcessed(messageId) {
+  if (!supabase || !messageId) return false
+
+  try {
+    const { data, error } = await supabase
+      .from('whatsapp_messages')
+      .select('wa_message_id')
+      .eq('wa_message_id', messageId)
+      .limit(1)
+
+    if (error) {
+      console.error('WhatsApp duplicate check failed:', error.message)
+      return false
     }
 
-    console.log(
-      `WhatsApp ${direction} message saved successfully`
-    )
+    return Boolean(data?.length)
   } catch (error) {
-    console.error(
-      'WhatsApp history error:',
-      error.message
-    )
+    console.error('WhatsApp duplicate check error:', error.message)
+    return false
   }
 }
 
 // --------------------------------------------------
-// 3. HTTP HELPERS
+// 4. HTTP HELPERS
 // --------------------------------------------------
 
 function sendJson(res, statusCode, data) {
@@ -186,32 +192,39 @@ function sendJson(res, statusCode, data) {
 }
 
 function setCors(req, res) {
-  const origin = req.headers.origin
+  const origin = req.headers.origin || ''
 
-  const allowedOrigins = [
+  const allowedOrigins = new Set([
     CLIENT_ORIGIN,
+    'http://localhost:5173',
+    'http://127.0.0.1:5173',
     'http://localhost:5174',
-    'http://127.0.0.1:5174'
-  ]
+    'http://127.0.0.1:5174',
+    'http://localhost:5175',
+    'http://127.0.0.1:5175',
+    'http://localhost:5176',
+    'http://127.0.0.1:5176'
+  ].filter(Boolean))
 
-  if (!origin || allowedOrigins.includes(origin)) {
-    res.setHeader(
-      'Access-Control-Allow-Origin',
-      origin || CLIENT_ORIGIN
-    )
+  if (origin && allowedOrigins.has(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin)
+  } else if (!origin && CLIENT_ORIGIN) {
+    res.setHeader('Access-Control-Allow-Origin', CLIENT_ORIGIN)
   }
 
   res.setHeader('Vary', 'Origin')
 
   res.setHeader(
     'Access-Control-Allow-Methods',
-    'GET, POST, OPTIONS'
+    'GET, POST, PATCH, PUT, DELETE, OPTIONS'
   )
 
   res.setHeader(
     'Access-Control-Allow-Headers',
     'Content-Type, Authorization, X-Hub-Signature-256'
   )
+
+  res.setHeader('Access-Control-Max-Age', '86400')
 }
 
 function readRawBody(req) {
@@ -252,7 +265,7 @@ function verifyMetaSignature(rawBody, signature) {
 }
 
 // --------------------------------------------------
-// 4. WHATSAPP SEND MESSAGE
+// 5. WHATSAPP SEND MESSAGE
 // --------------------------------------------------
 
 async function sendWhatsApp(to, message) {
@@ -332,7 +345,7 @@ async function sendAndLog(to, message, label = 'Notification') {
 }
 
 // --------------------------------------------------
-// 5. ORDER HELPERS
+// 6. ORDER HELPERS
 // --------------------------------------------------
 
 async function findOrder(orderNumber) {
@@ -379,6 +392,226 @@ function formatPKR(amount) {
   }).format(number)
 }
 
+function isValidEmail(value) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
+    String(value || '').trim()
+  )
+}
+
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;')
+}
+
+async function sendConfirmationEmail(order) {
+  let recipient = String(order?.customer_email || '').trim()
+  const orderNumber = getOrderNumber(order)
+
+  if (!recipient && order?.user_id) {
+    try {
+      const { data: userData } = await supabase.auth.admin
+        .getUserById(order.user_id)
+      recipient = String(userData?.user?.email || '').trim()
+    } catch (error) {
+      console.error('Customer email lookup failed:', error.message)
+    }
+  }
+
+  if (!recipient) {
+    return { status: 'failed', sent: false, error: 'Customer email missing' }
+  }
+
+  if (!isValidEmail(recipient)) {
+    return { status: 'failed', sent: false, error: 'Invalid customer email' }
+  }
+
+  const notificationType = 'order_confirmed'
+
+  const { data: existingNotification, error: lookupError } =
+    await supabase
+      .from('email_notifications')
+      .select('status')
+      .eq('order_id', order.id)
+      .eq('notification_type', notificationType)
+      .maybeSingle()
+
+  if (lookupError) {
+    console.error('Email notification lookup failed:', lookupError.message)
+    return { status: 'failed', sent: false, error: lookupError.message }
+  }
+
+  if (
+    existingNotification?.status === 'sent' ||
+    existingNotification?.status === 'pending'
+  ) {
+    return {
+      status: existingNotification.status,
+      sent: existingNotification.status === 'sent',
+      skipped: true
+    }
+  }
+
+  let insertError = null
+
+  if (existingNotification?.status === 'failed') {
+    const retryResult = await supabase
+      .from('email_notifications')
+      .update({
+        recipient_email: recipient,
+        status: 'pending',
+        provider_message_id: null,
+        error_message: null,
+        updated_at: new Date().toISOString()
+      })
+      .eq('order_id', order.id)
+      .eq('notification_type', notificationType)
+    insertError = retryResult.error
+  } else {
+    const insertResult = await supabase
+      .from('email_notifications')
+      .insert({
+        order_id: order.id,
+        notification_type: notificationType,
+        recipient_email: recipient,
+        status: 'pending'
+      })
+    insertError = insertResult.error
+  }
+
+  if (insertError) {
+    if (insertError.code !== '23505') {
+      console.error('Email notification insert failed:', insertError.message)
+    }
+    return { status: 'failed', sent: false, error: insertError.message }
+  }
+
+  async function recordEmailFailure(errorMessage) {
+    await supabase
+      .from('email_notifications')
+      .update({
+        status: 'failed',
+        error_message: String(errorMessage).slice(0, 2000),
+        updated_at: new Date().toISOString()
+      })
+      .eq('order_id', order.id)
+      .eq('notification_type', notificationType)
+  }
+
+  if (!EMAIL_USER || !EMAIL_APP_PASSWORD) {
+    await recordEmailFailure('Email SMTP configuration missing')
+    return {
+      status: 'failed',
+      sent: false,
+      error: 'Email SMTP configuration missing'
+    }
+  }
+
+  const { data: itemRows, error: itemsError } = await supabase
+    .from('order_items')
+    .select('product_name, quantity, unit_price, line_total')
+    .eq('order_id', order.id)
+    .order('id')
+
+  if (itemsError) {
+    await recordEmailFailure(itemsError.message)
+    return { status: 'failed', sent: false, error: itemsError.message }
+  }
+
+  const items = itemRows || []
+  const itemRowsHtml = items.length
+    ? items.map(item => `
+      <tr>
+        <td style="padding:10px;border-bottom:1px solid #eee;">${escapeHtml(item.product_name)}</td>
+        <td style="padding:10px;border-bottom:1px solid #eee;text-align:center;">${escapeHtml(item.quantity)}</td>
+        <td style="padding:10px;border-bottom:1px solid #eee;text-align:right;">PKR ${escapeHtml(formatPKR(item.line_total ?? item.unit_price * item.quantity))}</td>
+      </tr>`).join('')
+    : '<tr><td colspan="3" style="padding:10px;border-bottom:1px solid #eee;">Order items unavailable</td></tr>'
+
+  const total = formatPKR(order.total_amount ?? order.subtotal)
+  const paymentMethod = String(order.payment_method || 'Not provided')
+    .replaceAll('_', ' ')
+    .toUpperCase()
+  const orderDate = order.created_at
+    ? new Date(order.created_at).toLocaleDateString('en-PK', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+      })
+    : 'Not available'
+
+  const html = `
+    <div style="margin:0;padding:24px;background:#f8f9f6;font-family:Arial,sans-serif;color:#24212B;">
+      <div style="max-width:600px;margin:auto;background:#fff;border-radius:16px;overflow:hidden;border:1px solid #eee;">
+        <div style="background:#5B3A8E;padding:24px;text-align:center;">
+          <h1 style="margin:0;color:#fff;font-size:24px;">LapMob Accessories</h1>
+        </div>
+        <div style="padding:24px;">
+          <p>Dear ${escapeHtml(order.customer_name || 'Customer')},</p>
+          <p>Your order has been <strong>confirmed</strong>. Thank you for shopping with LapMob Accessories.</p>
+          <p><strong>Order number:</strong> ${escapeHtml(orderNumber)}<br>
+          <strong>Order date:</strong> ${escapeHtml(orderDate)}<br>
+          <strong>Payment method:</strong> ${escapeHtml(paymentMethod)}<br>
+          <strong>Status:</strong> CONFIRMED</p>
+          <table style="width:100%;border-collapse:collapse;margin-top:20px;">
+            <thead>
+              <tr>
+                <th style="padding:10px;text-align:left;background:#ede5f7;">Product</th>
+                <th style="padding:10px;text-align:center;background:#ede5f7;">Qty</th>
+                <th style="padding:10px;text-align:right;background:#ede5f7;">Amount</th>
+              </tr>
+            </thead>
+            <tbody>${itemRowsHtml}</tbody>
+          </table>
+          <p style="text-align:right;font-size:18px;margin-top:20px;"><strong>Order total: PKR ${escapeHtml(total)}</strong></p>
+          <p>We appreciate your order and look forward to serving you.</p>
+        </div>
+      </div>
+    </div>`
+
+  try {
+    const transporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: {
+        user: EMAIL_USER,
+        pass: EMAIL_APP_PASSWORD
+      }
+    })
+
+    const result = await transporter.sendMail({
+      from: EMAIL_FROM,
+      to: recipient,
+      subject: `LapMob Order Confirmed - ${orderNumber}`,
+      text: `Dear ${order.customer_name || 'Customer'}, your LapMob order ${orderNumber} has been confirmed. Order total: PKR ${total}. Payment method: ${paymentMethod}. Thank you for shopping with LapMob Accessories.`,
+      html
+    })
+
+    await supabase
+      .from('email_notifications')
+      .update({
+        status: 'sent',
+        provider_message_id: result.messageId || null,
+        error_message: null,
+        updated_at: new Date().toISOString()
+      })
+      .eq('order_id', order.id)
+      .eq('notification_type', notificationType)
+
+    return {
+      status: 'sent',
+      sent: true,
+      providerMessageId: result.messageId || null
+    }
+  } catch (error) {
+    await recordEmailFailure(error.message)
+    console.error('Confirmation email delivery failed:', error.message)
+    return { status: 'failed', sent: false, error: error.message }
+  }
+}
+
 function formatOrderMessage(order) {
   const orderNumber = getOrderNumber(order)
   const customerName = order.customer_name || 'Not provided'
@@ -403,7 +636,7 @@ function formatOrderMessage(order) {
     '',
     '📦 *ORDER DETAILS*',
     `• Order ID: ${orderNumber}`,
-    `• Status: 🟡 ${status}`,
+    `• Status: ${status}`,
     `• Payment: ${payment}`,
     '',
     '👤 *CUSTOMER INFORMATION*',
@@ -416,13 +649,13 @@ function formatOrderMessage(order) {
     '━━━━━━━━━━━━━━━━━━',
     '⚡ *ADMIN ACTIONS*',
     '',
-    'Reply with one of these commands:',
+    'HELP',
+    `CONFIRM ${orderNumber}`,
+    `CANCEL ${orderNumber}`,
+    `DISPATCH ${orderNumber} 03XXXXXXXXX`,
+    `DELIVERED ${orderNumber}`,
+    `STATUS ${orderNumber}`,
     '',
-    `✅ CONFIRM ${orderNumber}`,
-    `❌ CANCEL ${orderNumber}`,
-    `🚚 DISPATCH ${orderNumber} 03XXXXXXXXX`,
-    '',
-    '━━━━━━━━━━━━━━━━━━',
     '*LapMob Accessories*',
     '_Your Technology. Our Priority._'
   ].join('\n')
@@ -449,11 +682,159 @@ function getCustomerStatusMessage(orderNumber, status) {
     ].join('\n')
   }
 
-  return ''
+  if (status === 'shipped') {
+    return [
+      '🚚 *YOUR ORDER IS ON THE WAY!*',
+      '',
+      `Your LapMob order *${orderNumber}* has been dispatched.`,
+      '',
+      'Thank you for shopping with LapMob Accessories!'
+    ].join('\n')
+  }
+
+  if (status === 'delivered') {
+    return [
+      '📦 *ORDER DELIVERED*',
+      '',
+      `Your LapMob order *${orderNumber}* has been marked as delivered.`,
+      '',
+      'Thank you for choosing LapMob Accessories!'
+    ].join('\n')
+  }
+
+  return `Your LapMob order *${orderNumber}* status is *${String(status || 'pending').toUpperCase()}*.`
 }
 
 // --------------------------------------------------
-// 6. ADMIN WHATSAPP COMMANDS
+// 7. CUSTOMER ORDER LOOKUP
+// --------------------------------------------------
+
+// Customer can only see an order whose stored phone matches
+// the WhatsApp sender number.
+async function findCustomerOrders(phone) {
+  if (!supabase) {
+    throw new Error('Supabase is not configured')
+  }
+
+  const normalizedPhone = cleanPhone(phone)
+
+  if (!normalizedPhone) return []
+
+  const { data, error } = await supabase
+    .from('orders')
+    .select('*')
+    .limit(500)
+
+  if (error) {
+    console.error('Customer order lookup error:', error)
+    throw error
+  }
+
+  return (data || [])
+    .filter(order => getCustomerPhone(order) === normalizedPhone)
+    .sort((a, b) => {
+      const dateA = new Date(a.created_at || 0).getTime()
+      const dateB = new Date(b.created_at || 0).getTime()
+      return dateB - dateA
+    })
+}
+
+async function handleCustomerMessage(from, message) {
+  const normalizedMessage = String(message || '').trim()
+  const command = normalizedMessage.toUpperCase()
+  let reply = ''
+
+  if (
+    ['HI', 'HELLO', 'HEY', 'AOA', 'ASSALAM O ALAIKUM'].includes(command)
+  ) {
+    reply = [
+      '👋 *Welcome to LapMob Accessories!*',
+      '',
+      'How can we help you today?',
+      '',
+      'Send *HELP* to see available options.'
+    ].join('\n')
+  } else if (command === 'HELP') {
+    reply = [
+      '📱 *LAPMOB CUSTOMER HELP*',
+      '━━━━━━━━━━━━━━━━━━',
+      '',
+      '🔹 HI - Welcome message',
+      '🔹 STATUS - Check your latest order',
+      '🔹 STATUS ORDER_NUMBER - Check a specific order',
+      '🔹 DELIVERY - Delivery information',
+      '🔹 PRICE - Product price enquiry',
+      '',
+      'You can also send your product name or question.',
+      '',
+      '*LapMob Accessories*'
+    ].join('\n')
+  } else if (command === 'STATUS' || command.startsWith('STATUS ')) {
+    try {
+      const requestedOrderNumber = normalizedMessage
+        .split(/\s+/)
+        .slice(1)
+        .join(' ')
+        .trim()
+
+      if (requestedOrderNumber) {
+        const order = await findOrder(requestedOrderNumber)
+
+        if (!order || getCustomerPhone(order) !== cleanPhone(from)) {
+          reply = '❌ We could not find that order for your WhatsApp number.'
+        } else {
+          reply = getCustomerStatusMessage(
+            getOrderNumber(order),
+            order.order_status || 'pending'
+          )
+        }
+      } else {
+        const orders = await findCustomerOrders(from)
+        const order = orders[0]
+
+        if (!order) {
+          reply = 'We could not find an order linked to this WhatsApp number.'
+        } else {
+          reply = getCustomerStatusMessage(
+            getOrderNumber(order),
+            order.order_status || 'pending'
+          )
+        }
+      }
+    } catch (error) {
+      console.error('Customer status command failed:', error)
+      reply = 'Sorry, we could not check your order right now. Please try again later.'
+    }
+  } else if (command === 'DELIVERY') {
+    reply = [
+      '🚚 *LAPMOB DELIVERY INFORMATION*',
+      '',
+      'For a delivery update, send:',
+      '*STATUS*',
+      '',
+      'You can also send your order number to our support team.'
+    ].join('\n')
+  } else if (command === 'PRICE') {
+    reply = [
+      '💰 *PRODUCT PRICE ENQUIRY*',
+      '',
+      'Please send the product name, product link, or product image.',
+      'Our team will help you with the latest price.'
+    ].join('\n')
+  } else {
+    reply = [
+      'Thank you for contacting *LapMob Accessories*.',
+      '',
+      'Our team will assist you shortly.',
+      'Send *HELP* to see available options.'
+    ].join('\n')
+  }
+
+  await sendAndLog(from, reply, 'Customer auto-reply')
+}
+
+// --------------------------------------------------
+// 8. ADMIN WHATSAPP COMMANDS
 // --------------------------------------------------
 
 async function handleAdminCommand(from, message) {
@@ -462,7 +843,7 @@ async function handleAdminCommand(from, message) {
     return
   }
 
-  const parts = message.trim().split(/\s+/)
+  const parts = String(message || '').trim().split(/\s+/)
   const command = (parts[0] || '').toUpperCase()
 
   if (command === 'HELP') {
@@ -472,17 +853,19 @@ async function handleAdminCommand(from, message) {
         '📱 *LAPMOB ADMIN COMMANDS*',
         '━━━━━━━━━━━━━━━━━━',
         '',
-        'Available commands:',
-        '',
-        '🔹 HELP',
-        '🔹 CONFIRM ORDER_NUMBER',
-        '🔹 CANCEL ORDER_NUMBER',
-        '🔹 DISPATCH ORDER_NUMBER 03XXXXXXXXX',
+        'HELP',
+        'CONFIRM ORDER_NUMBER',
+        'CANCEL ORDER_NUMBER',
+        'DISPATCH ORDER_NUMBER 03XXXXXXXXX',
+        'DELIVERED ORDER_NUMBER',
+        'STATUS ORDER_NUMBER',
         '',
         'Example:',
         'CONFIRM WT-123456',
+        'DISPATCH WT-123456 03001234567',
+        'DELIVERED WT-123456',
+        'STATUS WT-123456',
         '',
-        '━━━━━━━━━━━━━━━━━━',
         '*LapMob Accessories*'
       ].join('\n'),
       'Admin help'
@@ -491,13 +874,20 @@ async function handleAdminCommand(from, message) {
     return
   }
 
-  if (!['CONFIRM', 'CANCEL', 'DISPATCH'].includes(command)) {
+  const supportedCommands = [
+    'CONFIRM',
+    'CANCEL',
+    'DISPATCH',
+    'DELIVERED',
+    'STATUS'
+  ]
+
+  if (!supportedCommands.includes(command)) {
     await sendAndLog(
       from,
       '⚠️ Unknown command.\n\nSend *HELP* to see available commands.',
       'Admin reply'
     )
-
     return
   }
 
@@ -506,10 +896,9 @@ async function handleAdminCommand(from, message) {
   if (!orderNumber) {
     await sendAndLog(
       from,
-      '⚠️ Please provide an order number.\n\nExample:\nCONFIRM WT-123456',
+      `⚠️ Please provide an order number.\n\nExample:\n${command} WT-123456`,
       'Admin reply'
     )
-
     return
   }
 
@@ -524,7 +913,6 @@ async function handleAdminCommand(from, message) {
         '⚠️ Please provide the delivery person number.\n\nExample:\nDISPATCH WT-123456 03001234567',
         'Admin reply'
       )
-
       return
     }
   }
@@ -538,51 +926,67 @@ async function handleAdminCommand(from, message) {
         `❌ Order ${orderNumber} was not found.`,
         'Admin reply'
       )
-
       return
     }
 
     const currentStatus = String(
-      order.order_status || ''
+      order.order_status || 'pending'
     ).toLowerCase()
 
-    const targetStatus = command === 'CONFIRM'
-      ? 'confirmed'
-      : command === 'CANCEL'
-        ? 'cancelled'
-        : null
+    // STATUS only reads the order. It does not update it.
+    if (command === 'STATUS') {
+      await sendAndLog(
+        from,
+        [
+          '📦 *ORDER STATUS*',
+          '━━━━━━━━━━━━━━━━━━',
+          '',
+          `Order: ${getOrderNumber(order)}`,
+          `Customer: ${order.customer_name || 'N/A'}`,
+          `Customer phone: ${getCustomerPhone(order) || 'N/A'}`,
+          `Payment: ${order.payment_method || 'N/A'}`,
+          `Total: PKR ${formatPKR(order.total_amount ?? order.total)}`,
+          `Status: *${currentStatus.toUpperCase()}*`,
+          '',
+          '*LapMob Accessories*'
+        ].join('\n'),
+        'Admin order status'
+      )
+      return
+    }
 
-    // Prevent duplicate customer notifications.
-    if (targetStatus && currentStatus === targetStatus) {
+    const targetStatus = {
+      CONFIRM: 'confirmed',
+      CANCEL: 'cancelled',
+      DISPATCH: 'shipped',
+      DELIVERED: 'delivered'
+    }[command]
+
+    if (currentStatus === targetStatus) {
       await sendAndLog(
         from,
         `ℹ️ Order ${orderNumber} already has status *${targetStatus.toUpperCase()}*. No duplicate customer notification was sent.`,
         'Admin reply'
       )
-
       return
     }
 
-    let updateData = {}
-
-    if (command === 'CONFIRM') {
-      updateData = {
-        order_status: 'confirmed'
-      }
+    if (currentStatus === 'cancelled' && command !== 'CANCEL') {
+      await sendAndLog(
+        from,
+        `⚠️ Order ${orderNumber} is cancelled. It cannot be changed using this command.`,
+        'Admin reply'
+      )
+      return
     }
 
-    if (command === 'CANCEL') {
-      updateData = {
-        order_status: 'cancelled'
-      }
+    const updateData = {
+      order_status: targetStatus
     }
 
     if (command === 'DISPATCH') {
-      updateData = {
-        order_status: 'shipped',
-        delivery_person_phone: deliveryPhone,
-        dispatched_at: new Date().toISOString()
-      }
+      updateData.delivery_person_phone = deliveryPhone
+      updateData.dispatched_at = new Date().toISOString()
     }
 
     let updateQuery = supabase
@@ -590,16 +994,14 @@ async function handleAdminCommand(from, message) {
       .update(updateData)
       .eq('id', order.id)
 
-    // Compare current status to avoid concurrent duplicate updates.
-    if (targetStatus) {
-      if (order.order_status == null) {
-        updateQuery = updateQuery.is('order_status', null)
-      } else {
-        updateQuery = updateQuery.eq(
-          'order_status',
-          order.order_status
-        )
-      }
+    // Avoid overwriting a status changed by another request.
+    if (order.order_status == null) {
+      updateQuery = updateQuery.is('order_status', null)
+    } else {
+      updateQuery = updateQuery.eq(
+        'order_status',
+        order.order_status
+      )
     }
 
     const { data: updatedOrder, error } = await updateQuery
@@ -614,17 +1016,15 @@ async function handleAdminCommand(from, message) {
         `❌ Could not update order: ${error.message}`,
         'Admin reply'
       )
-
       return
     }
 
     if (!updatedOrder) {
       await sendAndLog(
         from,
-        `⚠️ Order ${orderNumber} was changed by another request. Please check its current status.`,
+        `⚠️ Order ${orderNumber} was changed by another request. Send STATUS ${orderNumber} to check its current status.`,
         'Admin reply'
       )
-
       return
     }
 
@@ -636,19 +1036,37 @@ async function handleAdminCommand(from, message) {
         '',
         `Order ID: ${orderNumber}`,
         `Action: ${command}`,
-        `New Status: ${updateData.order_status.toUpperCase()}`,
+        `New Status: ${targetStatus.toUpperCase()}`,
         '',
         'LapMob Accessories'
       ].join('\n'),
       'Admin confirmation'
     )
 
+    if (targetStatus === 'confirmed') {
+      const emailResult = await sendConfirmationEmail({
+        ...order,
+        order_status: 'confirmed'
+      })
+
+      if (emailResult.sent) {
+        await sendAndLog(
+          from,
+          `✅ Confirmation email sent for order ${orderNumber}.`,
+          'Admin email confirmation'
+        )
+      } else if (!emailResult.skipped) {
+        await sendAndLog(
+          from,
+          `⚠️ Order ${orderNumber} was confirmed, but the confirmation email was not sent.`,
+          'Admin email warning'
+        )
+      }
+    }
+
     const customerPhone = getCustomerPhone(order)
 
-    if (
-      (command === 'CONFIRM' || command === 'CANCEL') &&
-      customerPhone
-    ) {
+    if (customerPhone) {
       const customerMessage = getCustomerStatusMessage(
         orderNumber,
         targetStatus
@@ -657,9 +1075,7 @@ async function handleAdminCommand(from, message) {
       const sent = await sendAndLog(
         customerPhone,
         customerMessage,
-        targetStatus === 'confirmed'
-          ? 'Customer confirmation'
-          : 'Customer cancellation'
+        `Customer ${targetStatus} notification`
       )
 
       if (!sent) {
@@ -669,10 +1085,7 @@ async function handleAdminCommand(from, message) {
           'Admin notification warning'
         )
       }
-    } else if (
-      (command === 'CONFIRM' || command === 'CANCEL') &&
-      !customerPhone
-    ) {
+    } else {
       await sendAndLog(
         from,
         `⚠️ Order ${orderNumber} was updated, but its customer phone number is missing.`,
@@ -697,20 +1110,6 @@ async function handleAdminCommand(from, message) {
         ].join('\n'),
         'Delivery assignment'
       )
-
-      if (customerPhone) {
-        await sendAndLog(
-          customerPhone,
-          [
-            '🚚 *YOUR ORDER IS ON THE WAY!*',
-            '',
-            `Your LapMob order *${orderNumber}* has been dispatched.`,
-            '',
-            'Thank you for shopping with LapMob Accessories!'
-          ].join('\n'),
-          'Customer dispatch notification'
-        )
-      }
     }
   } catch (error) {
     console.error('Admin command error:', error)
@@ -724,12 +1123,27 @@ async function handleAdminCommand(from, message) {
 }
 
 // --------------------------------------------------
-// 7. INCOMING WHATSAPP WEBHOOK
+// 9. INCOMING WHATSAPP WEBHOOK
 // --------------------------------------------------
 
 async function handleIncomingWebhook(payload) {
   console.log('WEBHOOK PROCESSING STARTED')
-  console.log('WEBHOOK EVENT SUMMARY:', JSON.stringify((payload?.entry || []).map(entry => ({ changes: (entry?.changes || []).map(change => ({ field: change?.field, hasMessages: Array.isArray(change?.value?.messages), messageCount: change?.value?.messages?.length || 0, hasStatuses: Array.isArray(change?.value?.statuses), statusCount: change?.value?.statuses?.length || 0 })) }))));
+
+  console.log(
+    'WEBHOOK EVENT SUMMARY:',
+    JSON.stringify(
+      (payload?.entry || []).map(entry => ({
+        changes: (entry?.changes || []).map(change => ({
+          field: change?.field,
+          hasMessages: Array.isArray(change?.value?.messages),
+          messageCount: change?.value?.messages?.length || 0,
+          hasStatuses: Array.isArray(change?.value?.statuses),
+          statusCount: change?.value?.statuses?.length || 0
+        }))
+      }))
+    )
+  )
+
   const entries = payload?.entry || []
 
   for (const entry of entries) {
@@ -742,6 +1156,8 @@ async function handleIncomingWebhook(payload) {
         const message =
           incoming?.text?.body ||
           incoming?.button?.text ||
+          incoming?.interactive?.button_reply?.title ||
+          incoming?.interactive?.list_reply?.title ||
           ''
 
         if (!from || !message) continue
@@ -750,9 +1166,18 @@ async function handleIncomingWebhook(payload) {
 
         console.log('Incoming WhatsApp message:', {
           from,
-          message
+          message,
+          messageId
         })
 
+        // Prevent repeated webhook deliveries from processing
+        // the same message more than once.
+        if (messageId && await wasMessageProcessed(messageId)) {
+          console.log('Duplicate WhatsApp message ignored:', messageId)
+          continue
+        }
+
+        // Save before processing so a retry can be detected.
         await saveWhatsAppMessage({
           phone: from,
           direction: 'inbound',
@@ -760,14 +1185,18 @@ async function handleIncomingWebhook(payload) {
           messageId
         })
 
-        await handleAdminCommand(from, message)
+        if (from === ADMIN_WHATSAPP_NUMBER) {
+          await handleAdminCommand(from, message)
+        } else {
+          await handleCustomerMessage(from, message)
+        }
       }
     }
   }
 }
 
 // --------------------------------------------------
-// 8. MAIN SERVER
+// 10. MAIN SERVER
 // --------------------------------------------------
 
 async function handler(req, res) {
@@ -792,6 +1221,20 @@ async function handler(req, res) {
   }
 
   try {
+    const shippingHandled = await handleShippingRequest(
+      req,
+      res,
+      url,
+      {
+        supabase,
+        readRequestJson,
+        sendJson,
+        sendAndLog
+      }
+    )
+
+    if (shippingHandled) return
+
     // ------------------------------------------------
     // HEALTH CHECK
     // ------------------------------------------------
@@ -806,7 +1249,6 @@ async function handler(req, res) {
         missing,
         service: 'LapMob WhatsApp Service'
       })
-
       return
     }
 
@@ -822,7 +1264,6 @@ async function handler(req, res) {
         sendJson(res, 503, {
           error: 'Supabase is not configured'
         })
-
         return
       }
 
@@ -836,7 +1277,6 @@ async function handler(req, res) {
         sendJson(res, 401, {
           error: 'Authentication required'
         })
-
         return
       }
 
@@ -848,23 +1288,24 @@ async function handler(req, res) {
         sendJson(res, 400, {
           error: 'Invalid JSON request'
         })
-
         return
       }
 
-      const orderId = String(
-        payload?.order_id || ''
-      ).trim()
-
-      const orderNumber = String(
-        payload?.order_number || ''
-      ).trim()
+      const orderId = String(payload?.order_id || '').trim()
+      const orderNumber = String(payload?.order_number || '').trim()
+      const customerEmail = String(payload?.customer_email || '').trim()
 
       if (!orderId && !orderNumber) {
         sendJson(res, 400, {
           error: 'order_id or order_number is required'
         })
+        return
+      }
 
+      if (!customerEmail || !isValidEmail(customerEmail)) {
+        sendJson(res, 400, {
+          error: 'A valid customer email is required'
+        })
         return
       }
 
@@ -872,15 +1313,11 @@ async function handler(req, res) {
         await supabase.auth.getUser(token)
 
       if (authError || !authData?.user) {
-        console.error(
-          'Customer authentication failed:',
-          authError
-        )
+        console.error('Customer authentication failed:', authError)
 
         sendJson(res, 401, {
           error: 'Invalid session'
         })
-
         return
       }
 
@@ -938,7 +1375,6 @@ async function handler(req, res) {
           details: orderError.message,
           code: orderError.code
         })
-
         return
       }
 
@@ -948,7 +1384,6 @@ async function handler(req, res) {
           orderId,
           orderNumber
         })
-
         return
       }
 
@@ -958,9 +1393,23 @@ async function handler(req, res) {
         sendJson(res, 403, {
           error: 'Order access denied'
         })
-
         return
       }
+
+      const { error: emailUpdateError } = await supabase
+        .from('orders')
+        .update({ customer_email: customerEmail })
+        .eq('id', order.id)
+
+      if (emailUpdateError) {
+        sendJson(res, 500, {
+          error: 'Order was created, but its customer email could not be saved',
+          details: emailUpdateError.message
+        })
+        return
+      }
+
+      order.customer_email = customerEmail
 
       const message = formatOrderMessage(order)
 
@@ -975,7 +1424,6 @@ async function handler(req, res) {
           ok: false,
           error: 'Order found, but WhatsApp admin notification failed'
         })
-
         return
       }
 
@@ -984,7 +1432,6 @@ async function handler(req, res) {
         message: 'Order verified and admin WhatsApp notification accepted',
         order_number: order.order_number
       })
-
       return
     }
 
@@ -1000,7 +1447,6 @@ async function handler(req, res) {
         sendJson(res, 503, {
           error: 'Supabase is not configured'
         })
-
         return
       }
 
@@ -1014,7 +1460,6 @@ async function handler(req, res) {
         sendJson(res, 401, {
           error: 'Authentication required'
         })
-
         return
       }
 
@@ -1026,17 +1471,13 @@ async function handler(req, res) {
         sendJson(res, 400, {
           error: 'Invalid JSON request'
         })
-
         return
       }
 
-      const orderId = String(
-        payload?.order_id || ''
-      ).trim()
-
-      const newStatus = String(
-        payload?.status || ''
-      ).trim().toLowerCase()
+      const orderId = String(payload?.order_id || '').trim()
+      const newStatus = String(payload?.status || '')
+        .trim()
+        .toLowerCase()
 
       if (
         !orderId ||
@@ -1045,11 +1486,9 @@ async function handler(req, res) {
         sendJson(res, 400, {
           error: 'Valid order_id and status are required'
         })
-
         return
       }
 
-      // Verify Supabase user session.
       const { data: authData, error: authError } =
         await supabase.auth.getUser(token)
 
@@ -1057,11 +1496,9 @@ async function handler(req, res) {
         sendJson(res, 401, {
           error: 'Invalid session'
         })
-
         return
       }
 
-      // Verify admin role.
       const { data: profile, error: profileError } =
         await supabase
           .from('profiles')
@@ -1073,11 +1510,9 @@ async function handler(req, res) {
         sendJson(res, 403, {
           error: 'Admin access required'
         })
-
         return
       }
 
-      // Read order.
       const { data: order, error: orderError } =
         await supabase
           .from('orders')
@@ -1090,7 +1525,6 @@ async function handler(req, res) {
           error: 'Could not read order',
           details: orderError.message
         })
-
         return
       }
 
@@ -1098,7 +1532,6 @@ async function handler(req, res) {
         sendJson(res, 404, {
           error: 'Order not found'
         })
-
         return
       }
 
@@ -1106,7 +1539,6 @@ async function handler(req, res) {
         order.order_status || ''
       ).toLowerCase()
 
-      // Do not send another notification for the same status.
       if (currentStatus === newStatus) {
         sendJson(res, 200, {
           ok: true,
@@ -1115,11 +1547,9 @@ async function handler(req, res) {
           order_number: getOrderNumber(order),
           message: 'Order already has this status. No duplicate notification sent.'
         })
-
         return
       }
 
-      // Update only if the status has not changed since it was read.
       let updateQuery = supabase
         .from('orders')
         .update({
@@ -1146,7 +1576,6 @@ async function handler(req, res) {
           error: 'Could not update order',
           details: updateError.message
         })
-
         return
       }
 
@@ -1154,46 +1583,53 @@ async function handler(req, res) {
         sendJson(res, 409, {
           error: 'Order status changed by another request. Refresh dashboard.'
         })
-
         return
       }
 
       const orderNumber = getOrderNumber(order)
       const customerPhone = getCustomerPhone(order)
+      let whatsappSent = false
 
-      if (!customerPhone) {
-        sendJson(res, 200, {
-          ok: true,
-          notificationSent: false,
-          order_number: orderNumber,
-          message: 'Order updated, but customer phone number is missing.'
-        })
+      if (customerPhone) {
+        const customerMessage = getCustomerStatusMessage(
+          orderNumber,
+          newStatus
+        )
 
-        return
+        whatsappSent = await sendAndLog(
+          customerPhone,
+          customerMessage,
+          newStatus === 'confirmed'
+            ? 'Dashboard customer confirmation'
+            : 'Dashboard customer cancellation'
+        )
       }
 
-      const customerMessage = getCustomerStatusMessage(
-        orderNumber,
-        newStatus
-      )
+      let emailResult = null
 
-      const sent = await sendAndLog(
-        customerPhone,
-        customerMessage,
-        newStatus === 'confirmed'
-          ? 'Dashboard customer confirmation'
-          : 'Dashboard customer cancellation'
-      )
+      if (newStatus === 'confirmed') {
+        emailResult = await sendConfirmationEmail({
+          ...order,
+          order_status: 'confirmed'
+        })
+      }
 
-      sendJson(res, sent ? 200 : 502, {
-        ok: true,
-        notificationSent: sent,
-        order_number: orderNumber,
-        message: sent
+      const responseMessage = !customerPhone
+        ? 'Order updated, but customer phone number is missing.'
+        : whatsappSent
           ? 'Order updated and customer WhatsApp notification accepted.'
           : 'Order updated, but WhatsApp notification failed.'
-      })
 
+      sendJson(res, whatsappSent || !customerPhone ? 200 : 502, {
+        ok: true,
+        notificationSent: whatsappSent,
+        emailStatus: emailResult?.status || null,
+        emailSent: emailResult?.sent === true,
+        order_number: orderNumber,
+        message: emailResult && !emailResult.sent
+          ? `${responseMessage} Confirmation email was not sent.`
+          : responseMessage
+      })
       return
     }
 
@@ -1229,7 +1665,6 @@ async function handler(req, res) {
       sendJson(res, 403, {
         error: 'Webhook verification failed'
       })
-
       return
     }
 
@@ -1247,14 +1682,11 @@ async function handler(req, res) {
         req.headers['x-hub-signature-256']
 
       if (!verifyMetaSignature(rawBody, signature)) {
-        console.error(
-          'Webhook signature verification failed'
-        )
+        console.error('Webhook signature verification failed')
 
         sendJson(res, 401, {
           error: 'Invalid webhook signature'
         })
-
         return
       }
 
@@ -1266,13 +1698,12 @@ async function handler(req, res) {
         sendJson(res, 400, {
           error: 'Invalid webhook JSON'
         })
-
         return
       }
 
-            // Process incoming WhatsApp messages before responding.
       try {
         await handleIncomingWebhook(payload)
+
         sendJson(res, 200, {
           ok: true,
           received: true,
@@ -1280,6 +1711,7 @@ async function handler(req, res) {
         })
       } catch (error) {
         console.error('Webhook processing error:', error)
+
         sendJson(res, 500, {
           ok: false,
           error: 'Webhook processing failed'
@@ -1307,15 +1739,26 @@ async function handler(req, res) {
 
 export default handler
 
-// Local development server only.
+// --------------------------------------------------
+// 11. LOCAL DEVELOPMENT SERVER
+// --------------------------------------------------
+
 if (!process.env.VERCEL) {
   const server = http.createServer(handler)
 
   server.listen(PORT, () => {
-    console.log(`LapMob WhatsApp service listening on port ${PORT}; missing config: ${missing.length ? missing.join(String.fromCharCode(44,32)) : String.fromCharCode(110,111,110,101)}`)
+    startShippingAgent({ supabase, sendAndLog })
+
+    console.log(
+      `LapMob WhatsApp service listening on port ${PORT}; missing config: ${
+        missing.length
+          ? missing.join(', ')
+          : 'none'
+      }`
+    )
   })
 
-  server.on(String.fromCharCode(101,114,114,111,114), error => {
+  server.on('error', error => {
     console.error(`Server startup error: ${error}`)
   })
 }
